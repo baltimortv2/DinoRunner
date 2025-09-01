@@ -1,5 +1,22 @@
 #!/usr/bin/env node
 
+// ==================================================================
+// ADVANCED ERROR HANDLING - "BLACK BOX" RECORDER
+// This must be at the very top to catch all errors.
+// ==================================================================
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🔥🔥 CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+process.on('uncaughtException', (error) => {
+  console.error('🔥🔥 CRITICAL: Uncaught Exception:', error);
+  process.exit(1);
+});
+process.on('exit', (code) => {
+  console.log(`INFO: Process is exiting with code: ${code}`);
+});
+// ==================================================================
+
 /**
  * Backend Server Startup Script
  * Handles environment setup and server initialization

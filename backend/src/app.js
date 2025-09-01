@@ -10,13 +10,23 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+// ==================================================================
+// MIDDLEWARE
+// ==================================================================
+
+// Request Logger - to see if requests are reaching the app
+app.use((req, res, next) => {
+  console.log(`➡️  INCOMING: ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // Map to store userId -> ws connection
 const wsConnections = new Map();
 
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: '*', // Allow all origins for debugging purposes
   credentials: true
 }));
 
