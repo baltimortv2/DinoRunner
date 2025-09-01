@@ -57,5 +57,13 @@ server.listen(PORT, () => {
     console.log(`   POST /api/economy/exchange-points - Exchange points for coins`);
     console.log(`   POST /api/economy/withdraw - Withdraw coins`);
   }
+}).on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use`);
+    process.exit(1);
+  } else {
+    console.error('❌ Server error:', error);
+    process.exit(1);
+  }
 });
 
