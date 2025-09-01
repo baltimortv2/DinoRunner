@@ -49,8 +49,20 @@ function fitCanvasToContainer(canvas) {
   document.documentElement.setAttribute('data-theme', saved);
 })();
 
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
   const canvas = document.getElementById('game-canvas');
+
+  // Инициализация API клиента и проверка подключения
+  try {
+    await window.apiClient.checkConnection();
+    if (window.apiClient.isOnline) {
+      console.log('✅ Backend подключен');
+    } else {
+      console.warn('⚠️ Backend недоступен, работаем в offline режиме');
+    }
+  } catch (error) {
+    console.warn('⚠️ Ошибка подключения к backend:', error);
+  }
 
   // Инициализация Telegram WebApp SDK
   if (window.telegramApp && window.telegramApp.isTelegram) {
