@@ -13,19 +13,6 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 
 async function startServer() {
   console.log('🚀 Starting application...');
-  
-  // Check if we're in the right directory
-  console.log('📁 Current working directory:', process.cwd());
-
-  // Log the DATABASE_URL for debugging
-  const dbUrl = process.env.DATABASE_URL;
-  if (dbUrl) {
-    // Mask password for security
-    const maskedUrl = dbUrl.replace(/:([^:]+)@/, ':*****@');
-    console.log(`🔑 DATABASE_URL detected: ${maskedUrl}`);
-  } else {
-    console.log('🚨 WARNING: DATABASE_URL is NOT SET in the environment!');
-  }
 
   const dbConnected = await checkDbConnection();
   if (!dbConnected && NODE_ENV === 'production') {
