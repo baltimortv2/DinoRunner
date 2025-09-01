@@ -45,19 +45,9 @@ app.use('/api/shop', require('./routes/shop'));
 app.use('/api/economy', require('./routes/economy'));
 app.use('/api/referrals', require('./routes/referrals'));
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
-// API Health check for Railway
+// Simplest possible health check
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
-  });
+  res.status(200).send('OK');
 });
 
 // Serve static files from the 'public' directory
