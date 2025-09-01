@@ -4,7 +4,8 @@
   "description": "Backend для Telegram Dino Runner игры",
   "main": "src/app.js",
   "scripts": {
-    "start": "node start.js",
+    "start": "node server.js",
+    "start:prod": "node start.js",
     "dev": "nodemon start.js",
     "test": "jest --passWithNoTests",
     "build": "echo 'No build step required'",
