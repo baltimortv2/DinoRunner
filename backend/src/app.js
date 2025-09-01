@@ -143,4 +143,19 @@ function handleWebSocketMessage(ws, data) {
   }
 }
 
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('Express error:', error);
+  res.status(500).json({ 
+    error: 'Internal server error',
+    message: error.message 
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  console.log(`404: ${req.method} ${req.path}`);
+  res.status(404).json({ error: 'Not found' });
+});
+
 module.exports = { app, server, wss };

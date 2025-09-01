@@ -40,12 +40,17 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Start server
+console.log(`🔧 Starting server on port ${PORT}...`);
+console.log(`🌍 Environment: ${NODE_ENV}`);
+console.log(`📁 Current directory: ${process.cwd()}`);
+
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
   console.log(`🌍 Environment: ${NODE_ENV}`);
   console.log(`📡 WebSocket server ready`);
   console.log(`🔗 API available at http://0.0.0.0:${PORT}/api`);
   console.log(`💚 Health check at http://0.0.0.0:${PORT}/health`);
+  console.log(`🎮 Frontend available at http://0.0.0.0:${PORT}/`);
   
   if (NODE_ENV === 'development') {
     console.log(`\n📋 Development endpoints:`);
@@ -59,11 +64,17 @@ server.listen(PORT, '0.0.0.0', () => {
   }
 }).on('error', (error) => {
   console.error('❌ Server error:', error);
+  console.error(`❌ Error code: ${error.code}`);
+  console.error(`❌ Error message: ${error.message}`);
+  
   if (error.code === 'EADDRINUSE') {
     console.error(`❌ Port ${PORT} is already in use`);
   } else if (error.code === 'EACCES') {
     console.error(`❌ Permission denied to bind to port ${PORT}`);
+  } else if (error.code === 'EADDRNOTAVAIL') {
+    console.error(`❌ Address not available`);
   }
+  
   process.exit(1);
 });
 
