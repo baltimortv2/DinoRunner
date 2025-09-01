@@ -5,6 +5,10 @@
  * Handles environment setup and server initialization
  */
 
+// Check if we're in the right directory
+console.log('📁 Current working directory:', process.cwd());
+console.log('📂 Files in current directory:', require('fs').readdirSync('.'));
+
 const { app, server } = require('./src/app.js');
 
 // Environment variables with defaults
