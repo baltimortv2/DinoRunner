@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#17212b">
+    <title>Dino Runner</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='50' x='10' font-size='48'%3E%F0%9F%A6%95%3C/text%3E%3C/svg%3E">
+    <link rel="stylesheet" href="./css/main.css">
+  </head>
+  <body>
+    <div id="app" class="overlay-open">
+      <div id="offline-banner" class="offline-banner hidden">OFFLINE · очки/монеты не сохраняются · лидерборд недоступен</div>
+      <!-- Игровая область -->
+      <div class="game-container">
+        <!-- Лидерборд панель слева -->
+        <div id="leaderboard-panel" class="leaderboard-panel hidden" aria-live="polite">
+          <div class="lb-header">
+            <div class="window-header" style="margin-bottom: 8px; padding-bottom: 4px;">
+              <h3 class="window-title" style="font-size: 18px;">🏆 Лидерборд</h3>
+            </div>
+            <h3>🏆 Лидеры</h3>
+          </div>
+          <div id="leaderboard-body" class="lb-body">
+            <!-- Контент загружается динамически -->
+          </div>
+          <div style="padding: 12px 14px; border-top: 1px solid rgba(42,58,74,0.35);">
+            <button id="lb-close" class="btn btn-secondary" style="width: 100%;">Закрыть</button>
+          </div>
+        </div>
+
+        <canvas id="game-canvas" aria-label="Игровое поле"></canvas>
+
+        <!-- Начальный экран -->
+        <div id="tap-to-start" class="gameover" role="dialog" aria-modal="true" aria-labelledby="start-title">
+          <div class="gameover-content start-content">
+            <div class="window-header">
+              <h2 class="window-title">🚀 Приветственное окно</h2>
+              <p class="window-subtitle">Добро пожаловать в игру</p>
+            </div>
+            <h1 class="game-title">🦕 Dino Runner</h1>
+            <p class="game-subtitle">Прыгай и избегай препятствий!</p>
+            <button id="btn-start" class="btn btn-primary btn-start" aria-label="Начать игру">Начать игру</button>
+          </div>
+        </div>
+
+        <!-- Главное меню -->
+        <div id="main-menu" class="gameover hidden" role="dialog" aria-modal="true" aria-labelledby="main-menu-title">
+          <div class="gameover-content main-menu-content">
+            <div class="window-header">
+              <h2 class="window-title">🏠 Главное меню</h2>
+              <p class="window-subtitle">Навигация по игре</p>
+            </div>
+            <h1 class="game-title">🦕 Dino Runner</h1>
+            
+            <!-- Предпросмотр игровой сцены -->
+            <div class="game-preview">
+              <canvas id="preview-canvas" width="480" height="240"></canvas>
+            </div>
+
+            <!-- Статистика -->
+            <div id="main-menu-stats" style="display:flex; gap:10px; justify-content:space-between; margin-bottom:12px;">
+              <div class="hud-item" style="flex:1; min-width:auto;"><span class="hud-icon">🏆</span><span>Очки:</span>&nbsp;<strong id="mms-score">0</strong></div>
+              <div class="hud-item" style="flex:1; min-width:auto;"><span class="hud-icon">🪙</span><span>Монеты:</span>&nbsp;<strong id="mms-coins">0</strong></div>
+              <div class="hud-item" style="flex:1; min-width:auto;"><span class="hud-icon">⭐</span>&nbsp;<strong id="mms-era">1</strong></div>
+            </div>
+            
+            <!-- Кнопки управления -->
+            <div class="main-menu-buttons">
+              <button id="btn-main-start" class="main-menu-btn btn-success">
+                <span class="btn-icon">▶️</span>
+                <span>Старт</span>
+              </button>
+              <button id="btn-main-shop" class="main-menu-btn btn-danger">
+                <span class="btn-icon">🛍️</span>
+                <span>Магазин</span>
+              </button>
+              <button id="btn-leaderboard" class="main-menu-btn btn-secondary">
+                <span class="btn-icon">🏆</span>
+                <span>Лидеры</span>
+              </button>
+              <button id="btn-main-menu" class="main-menu-btn btn-primary">
+                <span class="btn-icon">⚙️</span>
+                <span>Меню</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Экран Game Over -->
+        <div id="gameover" class="gameover hidden" role="dialog" aria-modal="true" aria-labelledby="go-title">
+          <div class="gameover-content">
+            <div class="window-header">
+              <h2 class="window-title">💀 Игра окончена</h2>
+              <p class="window-subtitle">Результаты игры</p>
+            </div>
+            <h2 class="gameover-title">💀 Игра окончена!</h2>
+            <div class="score-display">
+              <p>Ваш счет: <span id="final-score" class="final-score">0</span></p>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <button id="btn-restart" class="btn btn-primary btn-restart">Играть снова</button>
+              <button id="btn-mainmenu-go" class="btn btn-secondary btn-restart">Главное меню</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HUD - сверху над кнопкой "Начать" -->
+      <div id="hud" class="hud" role="status" aria-live="polite">
+        <div class="hud-item">
+          <span class="hud-icon">🏆</span>
+          <span class="hud-label">Очки:</span>
+          <span id="score">0</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-icon">🪙</span>
+          <span class="hud-label">Монеты:</span>
+          <span id="coins">0</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-icon">⭐</span>
+          <span id="era">1</span>
+        </div>
+      </div>
+
+      <!-- BOTTOM BAR -->
+      <div class="bottom-bar">
+        <!-- Кнопки управления -->
+        <div class="bottom-controls-row">
+          <button id="btn-shop-bottom" class="btn-large btn-danger" aria-label="Магазин">
+            <span class="btn-icon">🛍️</span>
+            <span>Магазин</span>
+          </button>
+          <button id="btn-mainmenu-bottom" class="btn-large btn-secondary" aria-label="Главное меню">
+            <span class="btn-icon">🏠</span>
+            <span>Главное меню</span>
+          </button>
+          <button id="btn-menu-bottom" class="btn-large btn-primary" aria-label="Меню">
+            <span class="btn-icon">⋯</span>
+            <span>Меню</span>
+          </button>
+        </div>
+
+        <!-- Пауза внизу (под землей, скрыта до старта игры) -->
+        <button id="btn-pause" class="btn-large btn-secondary hidden" aria-pressed="false" aria-label="Пауза">
+          <span class="btn-icon">⏸️</span>
+          <span>Пауза</span>
+        </button>
+      </div>
+
+
+
+      <!-- Главное меню -->
+      <div id="menu" class="menu hidden" role="dialog" aria-modal="true" aria-labelledby="menu-title">
+        <div class="menu-content">
+          <div class="menu-header">
+            <h3 id="menu-title">⚙️ Меню игры</h3>
+          </div>
+          <div class="window-header">
+            <h4 class="window-subtitle">Настройки и дополнительные функции</h4>
+          </div>
+          <div class="menu-buttons">
+            <button id="btn-sound" class="menu-btn">
+              <span class="menu-icon">🔊</span>
+              <span class="menu-text">Звук</span>
+            </button>
+            <button id="btn-referrals" class="menu-btn">
+              <span class="menu-icon">👥</span>
+              <span class="menu-text">Рефералы</span>
+            </button>
+            <button id="btn-exchange" class="menu-btn">
+              <span class="menu-icon">💱</span>
+              <span class="menu-text">Обмен</span>
+            </button>
+            <button id="btn-withdraw" class="menu-btn">
+              <span class="menu-icon">💰</span>
+              <span class="menu-text">Вывод</span>
+            </button>
+            <button id="btn-theme" class="menu-btn">
+              <span class="menu-icon">🌙</span>
+              <span class="menu-text">Тема</span>
+            </button>
+          </div>
+          <div class="socials">
+            <a href="https://t.me/dinorunfamily" class="social-link telegram" target="_blank" rel="noopener">
+              <span class="social-icon">📱</span>
+              <span>Telegram</span>
+            </a>
+            <a href="https://x.com/dinorunfamily?s=21" class="social-link x-twitter" target="_blank" rel="noopener">
+              <span class="social-icon">🐦</span>
+              <span>X (Twitter)</span>
+            </a>
+            <a href="#" class="social-link website" target="_blank" rel="noopener">
+              <span class="social-icon">🌐</span>
+              <span>Сайт</span>
+            </a>
+          </div>
+          <button id="btn-dev-tools" class="menu-btn">
+            <span class="menu-icon">🔧</span>
+            <span class="menu-text">Dev Tools</span>
+          </button>
+          <div id="dev-tools-panel" class="dev-tools-panel hidden">
+            <div class="dev-section">
+              <h4>🎯 Модификаторы</h4>
+              <div class="dev-controls">
+                <label>
+                  <span>Множитель очков:</span>
+                  <input type="number" id="dev-score-mult" value="1" min="0.1" max="10" step="0.1">
+                </label>
+                <label>
+                  <span>Стартовые монеты:</span>
+                  <input type="number" id="dev-coins" value="500" min="0" max="1000000">
+                </label>
+                <label>
+                  <span>Стартовый этап:</span>
+                  <input type="number" id="dev-era" value="1" min="1" max="14">
+                </label>
+                <label>
+                  <input type="checkbox" id="dev-godmode">
+                  <span>God Mode (бессмертие)</span>
+                </label>
+                <label>
+                  <input type="checkbox" id="dev-infinite-coins">
+                  <span>Бесконечные монеты</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="dev-section">
+              <h4>🎮 Управление игрой</h4>
+              <div class="dev-buttons">
+                <button id="dev-reset-score">Сбросить очки</button>
+                <button id="dev-reset-coins">Сбросить монеты</button>
+                <button id="dev-set-coins-1000">Установить 1000 монет</button>
+                <button id="dev-set-coins-10000">Установить 10000 монет</button>
+                <button id="dev-set-era-5">Установить этап 5</button>
+                <button id="dev-set-era-10">Установить этап 10</button>
+                <button id="dev-max-progress">Максимальный прогресс</button>
+              </div>
+            </div>
+
+            <div class="dev-section">
+              <h4>🔧 Диагностика</h4>
+              <div class="dev-buttons">
+                <button id="dev-log-state">Показать состояние игры</button>
+                <button id="dev-test-assets">Тест ассетов</button>
+                <button id="dev-clear-storage">Очистить localStorage</button>
+              </div>
+            </div>
+          </div>
+          <button id="btn-close-menu" class="menu-btn menu-btn-exit">
+            <span class="menu-icon">❌</span>
+            <span class="menu-text">Закрыть</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Модальные окна -->
+      <div id="modal-overlay" class="modal-overlay hidden">
+        <div id="modal" class="modal">
+          <div class="modal-header">
+            <h3 id="modal-title">Заголовок</h3>
+          </div>
+          <div class="window-header">
+            <h4 class="window-subtitle">Общее окно</h4>
+          </div>
+          <div id="modal-content">
+            Содержимое модального окна
+          </div>
+          <div style="padding: 16px; border-top: 1px solid rgba(42,58,74,0.3); display: flex; justify-content: flex-end;">
+            <button id="btn-close" class="btn btn-secondary">Закрыть</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Модальное окно обмена -->
+      <div id="exchange-modal" class="modal-overlay hidden">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>💱 Обмен очков на монеты</h3>
+          </div>
+          <div class="window-header">
+            <h3 class="window-title" style="font-size: 20px;">💱 Обмен очков на монеты</h3>
+            <h4 class="window-subtitle">Экономика игры</h4>
+          </div>
+          <div class="modal-body" style="padding: 20px; display: grid; gap: 12px;">
+            <div>Курс: <strong id="exchange-rate-label">1000 очков → 1 монета</strong></div>
+            <label>Сколько монет хотите получить:
+              <input id="exchange-amount" type="number" min="1" step="1" value="1" style="width: 120px; margin-left: 8px;">
+            </label>
+            <div>Стоимость в очках: <strong id="exchange-cost">1000</strong></div>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top: 8px;">
+              <button id="exchange-back" class="btn">Назад</button>
+              <button id="exchange-confirm" class="btn btn-primary">Обменять</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Магазин скинов -->
+      <div id="shop-modal" class="modal-overlay hidden">
+        <div class="modal shop-modal">
+          <div class="modal-header">
+            <h3>🛍️ Магазин скинов</h3>
+            <div style="display:flex; gap:10px;">
+              <button id="btn-shop-exit" class="btn btn-primary">Закрыть</button>
+            </div>
+          </div>
+          <div class="window-header">
+            <h3 class="window-title" style="font-size: 20px;">🛍️ Магазин скинов</h3>
+            <h4 class="window-subtitle">Персонализация персонажа</h4>
+          </div>
+          <div class="modal-body">
+            <div class="shop-balance">
+              <span class="balance-text">Ваши монеты: <span id="shop-coins" class="balance-amount">0</span></span>
+            </div>
+            <div id="shop-skins-list" class="shop-skins-grid">
+              <!-- Скины будут добавлены динамически -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <script src="js/telegram.js"></script>
+    <script src="js/services/api.js"></script>
+    <script src="js/services/backendIntegration.js"></script>
+    <script type="module" src="./js/main.js"></script>
+
+    <!-- ИНСТРУМЕНТЫ РАЗРАБОТЧИКА - УДАЛИТЬ ПЕРЕД РЕЛИЗОМ -->
+    <script src="./js/devTools.js"></script>
+  </body>
+</html>

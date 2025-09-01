@@ -60,10 +60,10 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Serve static files from frontend directory (after API routes)
-app.use(express.static(path.join(__dirname, '../../frontend')));
+// Serve static files from the 'public' directory
+app.use(express.static(path.join(__dirname, '../public')));
 
-// Serve index.html for all routes (SPA) - but exclude API routes
+// Serve index.html for all non-API routes (SPA)
 app.get('*', (req, res, next) => {
   // Skip API routes
   if (req.path.startsWith('/api/')) {
@@ -71,7 +71,7 @@ app.get('*', (req, res, next) => {
   }
   
   // Serve frontend for all other routes
-  res.sendFile(path.join(__dirname, '../../frontend/index.html'));
+  res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
 // WebSocket connection handling
