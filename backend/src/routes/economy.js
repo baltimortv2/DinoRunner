@@ -1,19 +1,12 @@
 const express = require('express');
 const router = express.Router();
+const { Pool } = require('pg');
 
-// In-memory хранилище для экономики
-const globalEconomy = {
-  totalSupply: 850_000_000,
-  issued: 0,
-  dailyExchanges: new Map() // userId -> { date, amount }
-};
-
-const userEconomy = new Map(); // userId -> { points, coins, era }
-
-// Экспортируем для использования в других модулях
-if (!global.economyMaps) {
-  global.economyMaps = { userEconomy };
-}
+// Database connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false
+});
 
 // Тир-система обмена
 const EXCHANGE_TIERS = [
@@ -35,18 +28,24 @@ const EXCHANGE_TIERS = [
 
 // Middleware для извлечения user_id
 function extractUserId(req) {
-  const userId = req.headers['x-user-id'] || 'demo-user';
+  const userId = req.headers['x-user-id'];
+  if (!userId) {
+    throw new Error('User ID required');
+  }
   return userId;
 }
 
 // Получение текущего курса обмена
-function getCurrentExchangeRate() {
+async function getCurrentExchangeRate() {
+  const result = await pool.query('SELECT COALESCE(SUM(amount), 0) as issued FROM claims WHERE status = $1', ['completed']);
+  const issued = parseInt(result.rows[0].issued) || 0;
+  
   for (let i = 0; i < EXCHANGE_TIERS.length; i++) {
-    if (globalEconomy.issued < EXCHANGE_TIERS[i].upTo) {
+    if (issued < EXCHANGE_TIERS[i].upTo) {
       return {
         tier: i + 1,
         rate: EXCHANGE_TIERS[i].rate,
-        remainingInTier: EXCHANGE_TIERS[i].upTo - globalEconomy.issued
+        remainingInTier: EXCHANGE_TIERS[i].upTo - issued
       };
     }
   }
@@ -58,205 +57,283 @@ function getCurrentExchangeRate() {
 }
 
 // Проверка дневного лимита
-function checkDailyLimit(userId, coinsToExchange) {
+async function checkDailyLimit(userId, coinsToExchange) {
   const today = new Date().toDateString();
-  const userDaily = globalEconomy.dailyExchanges.get(userId) || {};
   
-  if (userDaily.date !== today) {
-    userDaily.date = today;
-    userDaily.amount = 0;
-  }
+  const result = await pool.query(
+    'SELECT COALESCE(SUM(amount), 0) as daily_total FROM claims WHERE user_id = $1 AND DATE(created_at) = CURRENT_DATE AND status = $2',
+    [userId, 'completed']
+  );
   
-  const newTotal = userDaily.amount + coinsToExchange;
+  const dailyTotal = parseInt(result.rows[0].daily_total) || 0;
+  const newTotal = dailyTotal + coinsToExchange;
+  
   if (newTotal > 100) { // Дневной лимит 100 монет
     return false;
   }
   
-  userDaily.amount = newTotal;
-  globalEconomy.dailyExchanges.set(userId, userDaily);
   return true;
 }
 
 // GET /api/economy/exchange-rates
-router.get('/exchange-rates', (req, res) => {
-  const currentRate = getCurrentExchangeRate();
-  
-  res.json({
-    success: true,
-    currentRate,
-    globalStats: {
-      totalSupply: globalEconomy.totalSupply,
-      issued: globalEconomy.issued,
-      remaining: globalEconomy.totalSupply - globalEconomy.issued
-    },
-    tiers: EXCHANGE_TIERS
-  });
+router.get('/exchange-rates', async (req, res) => {
+  try {
+    const currentRate = await getCurrentExchangeRate();
+    
+    const result = await pool.query('SELECT COALESCE(SUM(amount), 0) as issued FROM claims WHERE status = $1', ['completed']);
+    const issued = parseInt(result.rows[0].issued) || 0;
+    
+    res.json({
+      success: true,
+      currentRate,
+      globalStats: {
+        totalSupply: 850_000_000,
+        issued: issued,
+        remaining: 850_000_000 - issued
+      },
+      tiers: EXCHANGE_TIERS
+    });
+  } catch (error) {
+    console.error('Exchange rates error:', error);
+    res.status(500).json({ error: 'Failed to get exchange rates' });
+  }
 });
 
 // POST /api/economy/exchange-points
-router.post('/exchange-points', (req, res) => {
-  const { coinsWanted } = req.body;
-  const userId = extractUserId(req);
-  
-  if (!coinsWanted || coinsWanted <= 0) {
-    return res.status(400).json({ error: 'Invalid coins amount' });
-  }
-  
-  if (coinsWanted > 100) {
-    return res.status(400).json({ error: 'Maximum 100 coins per exchange' });
-  }
-  
-  // Проверяем дневной лимит
-  if (!checkDailyLimit(userId, coinsWanted)) {
-    return res.status(400).json({ error: 'Daily exchange limit exceeded' });
-  }
-  
-  // Проверяем доступность монет в пуле
-  if (globalEconomy.issued + coinsWanted > globalEconomy.totalSupply) {
-    return res.status(400).json({ error: 'Insufficient coins in pool' });
-  }
-  
-  const currentRate = getCurrentExchangeRate();
-  const pointsRequired = coinsWanted * currentRate.rate;
-  
-  // Получаем данные пользователя
-  const userData = userEconomy.get(userId) || { points: 0, coins: 0, era: 1 };
-  
-  if (userData.points < pointsRequired) {
-    return res.status(400).json({ 
-      error: 'Insufficient points',
-      required: pointsRequired,
-      available: userData.points
-    });
-  }
-  
-  // Выполняем обмен
-  userData.points -= pointsRequired;
-  userData.coins += coinsWanted;
-  globalEconomy.issued += coinsWanted;
-  
-  userEconomy.set(userId, userData);
-  
-  res.json({
-    success: true,
-    exchange: {
-      coinsReceived: coinsWanted,
-      pointsSpent: pointsRequired,
-      rate: currentRate.rate,
-      tier: currentRate.tier
-    },
-    userStats: userData,
-    globalStats: {
-      issued: globalEconomy.issued,
-      remaining: globalEconomy.totalSupply - globalEconomy.issued
+router.post('/exchange-points', async (req, res) => {
+  try {
+    const { coinsWanted } = req.body;
+    const userId = extractUserId(req);
+    
+    if (!coinsWanted || coinsWanted <= 0) {
+      return res.status(400).json({ error: 'Invalid coins amount' });
     }
-  });
+    
+    if (coinsWanted > 100) {
+      return res.status(400).json({ error: 'Maximum 100 coins per exchange' });
+    }
+    
+    // Проверяем дневной лимит
+    if (!(await checkDailyLimit(userId, coinsWanted))) {
+      return res.status(400).json({ error: 'Daily exchange limit exceeded' });
+    }
+    
+    const currentRate = await getCurrentExchangeRate();
+    const pointsRequired = coinsWanted * currentRate.rate;
+    
+    // Получаем данные пользователя
+    const userResult = await pool.query(
+      'SELECT points, coins, era FROM users WHERE telegram_id = $1',
+      [userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const userData = userResult.rows[0];
+    
+    if (userData.points < pointsRequired) {
+      return res.status(400).json({ 
+        error: 'Insufficient points',
+        required: pointsRequired,
+        available: userData.points
+      });
+    }
+    
+    // Начинаем транзакцию
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Обновляем баланс пользователя
+      await client.query(
+        'UPDATE users SET points = points - $1, coins = coins + $2 WHERE telegram_id = $3',
+        [pointsRequired, coinsWanted, userId]
+      );
+      
+      // Создаем запись о транзакции
+      await client.query(
+        'INSERT INTO claims (user_id, amount, points_spent, exchange_rate, status, created_at) VALUES ($1, $2, $3, $4, $5, NOW())',
+        [userId, coinsWanted, pointsRequired, currentRate.rate, 'completed']
+      );
+      
+      await client.query('COMMIT');
+      
+      // Получаем обновленные данные
+      const updatedResult = await pool.query(
+        'SELECT points, coins, era FROM users WHERE telegram_id = $1',
+        [userId]
+      );
+      
+      res.json({
+        success: true,
+        exchange: {
+          coinsReceived: coinsWanted,
+          pointsSpent: pointsRequired,
+          rate: currentRate.rate,
+          tier: currentRate.tier
+        },
+        userStats: updatedResult.rows[0]
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Exchange points error:', error);
+    res.status(500).json({ error: 'Failed to exchange points' });
+  }
 });
 
 // GET /api/economy/user-balance
-router.get('/user-balance', (req, res) => {
-  const userId = extractUserId(req);
-  const userData = userEconomy.get(userId) || { points: 0, coins: 0, era: 1 };
-  
-  res.json({
-    success: true,
-    balance: userData
-  });
+router.get('/user-balance', async (req, res) => {
+  try {
+    const userId = extractUserId(req);
+    
+    const result = await pool.query(
+      'SELECT points, coins, era FROM users WHERE telegram_id = $1',
+      [userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({
+      success: true,
+      balance: result.rows[0]
+    });
+  } catch (error) {
+    console.error('User balance error:', error);
+    res.status(500).json({ error: 'Failed to get user balance' });
+  }
 });
 
 // POST /api/economy/withdraw-coins
-router.post('/withdraw-coins', (req, res) => {
-  const { amount, tonAddress } = req.body;
-  const userId = extractUserId(req);
-  
-  if (!amount || amount <= 0) {
-    return res.status(400).json({ error: 'Invalid withdrawal amount' });
+router.post('/withdraw-coins', async (req, res) => {
+  try {
+    const { amount, tonAddress } = req.body;
+    const userId = extractUserId(req);
+    
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'Invalid withdrawal amount' });
+    }
+    
+    if (!tonAddress || !tonAddress.startsWith('EQ')) {
+      return res.status(400).json({ error: 'Invalid TON address' });
+    }
+    
+    // Получаем баланс пользователя
+    const userResult = await pool.query(
+      'SELECT coins FROM users WHERE telegram_id = $1',
+      [userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const userData = userResult.rows[0];
+    
+    if (userData.coins < amount) {
+      return res.status(400).json({ 
+        error: 'Insufficient coins',
+        available: userData.coins,
+        requested: amount
+      });
+    }
+    
+    // Начинаем транзакцию
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Списываем монеты
+      await client.query(
+        'UPDATE users SET coins = coins - $1 WHERE telegram_id = $2',
+        [amount, userId]
+      );
+      
+      // Создаем запись о выводе
+      await client.query(
+        'INSERT INTO withdrawals (user_id, amount, ton_address, status, created_at) VALUES ($1, $2, $3, $4, NOW())',
+        [userId, amount, tonAddress, 'pending']
+      );
+      
+      await client.query('COMMIT');
+      
+      // Получаем новый баланс
+      const balanceResult = await pool.query(
+        'SELECT coins FROM users WHERE telegram_id = $1',
+        [userId]
+      );
+      
+      res.json({
+        success: true,
+        message: 'Withdrawal request created',
+        newBalance: balanceResult.rows[0].coins
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Withdraw coins error:', error);
+    res.status(500).json({ error: 'Failed to create withdrawal' });
   }
-  
-  if (!tonAddress || !tonAddress.startsWith('EQ')) {
-    return res.status(400).json({ error: 'Invalid TON address' });
-  }
-  
-  const userData = userEconomy.get(userId) || { points: 0, coins: 0, era: 1 };
-  
-  if (userData.coins < amount) {
-    return res.status(400).json({ 
-      error: 'Insufficient coins',
-      available: userData.coins,
-      requested: amount
-    });
-  }
-  
-  // В реальном приложении здесь будет интеграция с TON Space
-  // Пока просто списываем монеты
-  userData.coins -= amount;
-  userEconomy.set(userId, userData);
-  
-  // Создаем запись о выводе
-  const withdrawal = {
-    id: `withdrawal_${userId}_${Date.now()}`,
-    userId,
-    amount,
-    tonAddress,
-    status: 'pending',
-    createdAt: new Date().toISOString()
-  };
-  
-  res.json({
-    success: true,
-    withdrawal,
-    message: 'Withdrawal request created',
-    newBalance: userData.coins
-  });
 });
 
 // GET /api/economy/withdrawals
-router.get('/withdrawals', (req, res) => {
-  const userId = extractUserId(req);
-  
-  // В реальном приложении здесь будет запрос к БД
-  // Пока возвращаем пустой список
-  res.json({
-    success: true,
-    withdrawals: []
-  });
-});
-
-// POST /api/economy/add-points (для тестирования)
-router.post('/add-points', (req, res) => {
-  const { points } = req.body;
-  const userId = extractUserId(req);
-  
-  if (!points || points <= 0) {
-    return res.status(400).json({ error: 'Invalid points amount' });
+router.get('/withdrawals', async (req, res) => {
+  try {
+    const userId = extractUserId(req);
+    
+    const result = await pool.query(
+      'SELECT id, amount, ton_address, status, created_at FROM withdrawals WHERE user_id = $1 ORDER BY created_at DESC',
+      [userId]
+    );
+    
+    res.json({
+      success: true,
+      withdrawals: result.rows
+    });
+  } catch (error) {
+    console.error('Get withdrawals error:', error);
+    res.status(500).json({ error: 'Failed to get withdrawals' });
   }
-  
-  const userData = userEconomy.get(userId) || { points: 0, coins: 0, era: 1 };
-  userData.points += points;
-  userEconomy.set(userId, userData);
-  
-  res.json({
-    success: true,
-    message: 'Points added successfully',
-    newBalance: userData
-  });
 });
 
 // GET /api/economy/global-stats
-router.get('/global-stats', (req, res) => {
-  const currentRate = getCurrentExchangeRate();
-  
-  res.json({
-    success: true,
-    stats: {
-      totalSupply: globalEconomy.totalSupply,
-      issued: globalEconomy.issued,
-      remaining: globalEconomy.totalSupply - globalEconomy.issued,
-      currentRate: currentRate.rate,
-      currentTier: currentRate.tier,
-      totalUsers: userEconomy.size
-    }
-  });
+router.get('/global-stats', async (req, res) => {
+  try {
+    const currentRate = await getCurrentExchangeRate();
+    
+    const issuedResult = await pool.query('SELECT COALESCE(SUM(amount), 0) as issued FROM claims WHERE status = $1', ['completed']);
+    const issued = parseInt(issuedResult.rows[0].issued) || 0;
+    
+    const usersResult = await pool.query('SELECT COUNT(*) as total_users FROM users');
+    const totalUsers = parseInt(usersResult.rows[0].total_users) || 0;
+    
+    res.json({
+      success: true,
+      stats: {
+        totalSupply: 850_000_000,
+        issued: issued,
+        remaining: 850_000_000 - issued,
+        currentRate: currentRate.rate,
+        currentTier: currentRate.tier,
+        totalUsers: totalUsers
+      }
+    });
+  } catch (error) {
+    console.error('Global stats error:', error);
+    res.status(500).json({ error: 'Failed to get global stats' });
+  }
 });
 
 module.exports = router;

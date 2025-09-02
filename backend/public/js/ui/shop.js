@@ -3,50 +3,30 @@ export class SkinShop {
     this.game = game;
     // Раздельные категории: персонаж, земля, наземные враги, воздушные враги, облака
     this.availableSkins = [
-      // Characters
+      // Characters - анимированные спрайты (Run1, Run2, Crouch1, Crouch2)
       { id: 'char-standart', name: 'Персонаж: Стандартный', price: 0, type: 'character', packName: 'standart', owned: true },
       { id: 'char-sonic', name: 'Персонаж: Sonic', price: 500, type: 'character', packName: 'sonic', owned: false },
-      { id: 'char-mario', name: 'Персонаж: Mario', price: 500, type: 'character', packName: 'mario', owned: false },
-      { id: 'char-pacman', name: 'Персонаж: Pac-Man', price: 800, type: 'character', packName: 'pacman', owned: false },
       { id: 'char-premium', name: 'Персонаж: Premium', price: 1000, type: 'character', packName: 'premium', owned: false },
-      { id: 'char-batman', name: 'Персонаж: Batman', price: 1200, type: 'character', packName: 'batman', owned: false },
-      { id: 'char-joker', name: 'Персонаж: Joker', price: 1200, type: 'character', packName: 'joker', owned: false },
-      { id: 'char-supersonic', name: 'Персонаж: SuperSonic', price: 1500, type: 'character', packName: 'supersonic', owned: false },
-      // Ground
+      
+      // Ground - текстуры земли
       { id: 'ground-standart', name: 'Земля: Стандарт', price: 0, type: 'ground', packName: 'standart', owned: true },
       { id: 'ground-sonic', name: 'Земля: Sonic', price: 200, type: 'ground', packName: 'sonic', owned: false },
-      { id: 'ground-mario', name: 'Земля: Mario', price: 200, type: 'ground', packName: 'mario', owned: false },
-      { id: 'ground-pacman', name: 'Земля: Pac-Man', price: 200, type: 'ground', packName: 'pacman', owned: false },
       { id: 'ground-premium', name: 'Земля: Premium', price: 300, type: 'ground', packName: 'premium', owned: false },
-      { id: 'ground-batman', name: 'Земля: Batman', price: 300, type: 'ground', packName: 'batman', owned: false },
-      { id: 'ground-joker', name: 'Земля: Joker', price: 300, type: 'ground', packName: 'joker', owned: false },
-      { id: 'ground-supersonic', name: 'Земля: SuperSonic', price: 300, type: 'ground', packName: 'supersonic', owned: false },
-      // Enemies: ground
+      
+      // Enemies: ground - наземные враги разных размеров
       { id: 'enemies-ground-standart', name: 'Наземные враги: Стандарт', price: 0, type: 'enemiesGround', packName: 'standart', owned: true },
       { id: 'enemies-ground-sonic', name: 'Наземные враги: Sonic', price: 250, type: 'enemiesGround', packName: 'sonic', owned: false },
-      { id: 'enemies-ground-mario', name: 'Наземные враги: Mario', price: 250, type: 'enemiesGround', packName: 'mario', owned: false },
-      { id: 'enemies-ground-pacman', name: 'Наземные враги: Pac-Man', price: 250, type: 'enemiesGround', packName: 'pacman', owned: false },
       { id: 'enemies-ground-premium', name: 'Наземные враги: Premium', price: 400, type: 'enemiesGround', packName: 'premium', owned: false },
-      { id: 'enemies-ground-batman', name: 'Наземные враги: Batman', price: 400, type: 'enemiesGround', packName: 'batman', owned: false },
-      { id: 'enemies-ground-joker', name: 'Наземные враги: Joker', price: 400, type: 'enemiesGround', packName: 'joker', owned: false },
-      { id: 'enemies-ground-supersonic', name: 'Наземные враги: SuperSonic', price: 450, type: 'enemiesGround', packName: 'supersonic', owned: false },
-      // Enemies: air
+      
+      // Enemies: air - воздушные враги с анимацией (AirEnemy1, AirEnemy2)
       { id: 'enemies-air-standart', name: 'Воздушные враги: Стандарт', price: 0, type: 'enemiesAir', packName: 'standart', owned: true },
       { id: 'enemies-air-sonic', name: 'Воздушные враги: Sonic', price: 200, type: 'enemiesAir', packName: 'sonic', owned: false },
-      { id: 'enemies-air-mario', name: 'Воздушные враги: Mario', price: 200, type: 'enemiesAir', packName: 'mario', owned: false },
-      { id: 'enemies-air-pacman', name: 'Воздушные враги: Pac-Man', price: 200, type: 'enemiesAir', packName: 'pacman', owned: false },
       { id: 'enemies-air-premium', name: 'Воздушные враги: Premium', price: 350, type: 'enemiesAir', packName: 'premium', owned: false },
-      { id: 'enemies-air-batman', name: 'Воздушные враги: Batman', price: 350, type: 'enemiesAir', packName: 'batman', owned: false },
-      { id: 'enemies-air-joker', name: 'Воздушные враги: Joker', price: 350, type: 'enemiesAir', packName: 'joker', owned: false },
-      { id: 'enemies-air-supersonic', name: 'Воздушные враги: SuperSonic', price: 350, type: 'enemiesAir', packName: 'supersonic', owned: false },
-      // Clouds
+      
+      // Clouds - декоративные элементы
       { id: 'clouds-standart', name: 'Облака: Стандарт', price: 0, type: 'clouds', packName: 'standart', owned: true },
-      { id: 'clouds-mario', name: 'Облака: Mario', price: 150, type: 'clouds', packName: 'mario', owned: false },
-      { id: 'clouds-premium', name: 'Облака: Premium', price: 250, type: 'clouds', packName: 'premium', owned: false },
-      { id: 'clouds-pacman', name: 'Облака: Pac-Man', price: 150, type: 'clouds', packName: 'pacman', owned: false },
-      { id: 'clouds-batman', name: 'Облака: Batman', price: 250, type: 'clouds', packName: 'batman', owned: false },
-      { id: 'clouds-joker', name: 'Облака: Joker', price: 250, type: 'clouds', packName: 'joker', owned: false },
-      { id: 'clouds-supersonic', name: 'Облака: SuperSonic', price: 250, type: 'clouds', packName: 'supersonic', owned: false },
+      { id: 'clouds-sonic', name: 'Облака: Sonic', price: 150, type: 'clouds', packName: 'sonic', owned: false },
+      { id: 'clouds-premium', name: 'Облака: Premium', price: 250, type: 'clouds', packName: 'premium', owned: false }
     ];
     this.currentSkin = this.availableSkins[0];
     this.previewCanvas = null;
@@ -68,6 +48,8 @@ export class SkinShop {
       try {
         const response = await window.apiService.makeRequest('/api/shop/skins');
         if (response.success) {
+          console.log('✅ Скины загружены с backend:', response.skins);
+          
           // Обновляем список скинов данными с сервера
           this.availableSkins.forEach(skin => {
             const serverSkin = response.skins.find(s => s.id === skin.id);
@@ -391,7 +373,16 @@ export class SkinShop {
 
   // Проверка online статуса
   isOnline() {
-    return window.backendIntegration && window.backendIntegration.isBackendConnected();
+    // Проверяем через ConnectionMonitor
+    if (window.connectionMonitor) {
+      return window.connectionMonitor.isBackendOnline();
+    }
+    // Fallback к ApiService
+    if (window.apiService) {
+      return window.apiService.isBackendOnline();
+    }
+    // По умолчанию считаем оффлайн
+    return false;
   }
 
   // Показать сообщение о недоступности в offline режиме

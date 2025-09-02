@@ -380,20 +380,22 @@ html, body {
 }
 
 .menu-btn {
-  background: #2a3a4a;
-  border: 1px solid #3a4a5a;
-  border-radius: 16px; /* увеличен радиус */
-  padding: 20px; /* увеличен padding */
+  background: linear-gradient(135deg, #475569, #334155);
+  border: none;
+  border-radius: 16px;
+  padding: 20px;
   color: #e6edf3;
-  font-size: 20px; /* увеличен шрифт */
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 16px; /* увеличен gap */
+  gap: 16px;
   text-align: left;
-  min-height: 72px; /* увеличена минимальная высота */
+  min-height: 72px;
+  box-shadow: 0 4px 16px rgba(71, 85, 105, 0.3);
+  outline: none;
 }
 
 :root[data-theme="light"] .menu-btn {
@@ -403,8 +405,15 @@ html, body {
 }
 
 .menu-btn:hover {
-  background: #3a4a5a;
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #64748b, #475569);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(71, 85, 105, 0.4);
+}
+
+.menu-btn:active {
+  background: linear-gradient(135deg, #334155, #1e293b);
+  transform: translateY(0);
+  box-shadow: 0 2px 12px rgba(71, 85, 105, 0.3);
 }
 
 :root[data-theme="light"] .menu-btn:hover {
@@ -422,14 +431,20 @@ html, body {
 }
 
 .menu-btn-exit {
-  background: #dc3545;
-  border-color: #dc3545;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
   color: #ffffff;
   justify-content: center;
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.3);
 }
 
 .menu-btn-exit:hover {
-  background: #c82333;
+  background: linear-gradient(135deg, #b91c1c, #991b1b);
+  box-shadow: 0 6px 20px rgba(220, 38, 38, 0.4);
+}
+
+.menu-btn-exit:active {
+  background: linear-gradient(135deg, #991b1b, #7f1d1d);
+  box-shadow: 0 2px 12px rgba(220, 38, 38, 0.3);
 }
 
 /* Социальные ссылки */
@@ -1061,9 +1076,26 @@ html, body {
 .gameover { position: absolute; inset: 0; background: rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; padding:20px; z-index: 1000; pointer-events: auto; }
 .gameover .gameover-content { pointer-events: auto; }
 :root[data-theme="light"] .gameover { background: rgba(0,0,0,0.6); }
+
 /* Start overlay lets clicks pass outside content */
 #tap-to-start { pointer-events: none; }
 #tap-to-start .gameover-content { pointer-events: auto; }
+
+/* Main menu overlay */
+#main-menu { z-index: 900; position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; padding: 20px; pointer-events: auto; }
+#main-menu .main-menu-content { pointer-events: auto; }
+
+/* Menu overlay */
+#menu { z-index: 950; position: absolute; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; padding: 20px; pointer-events: auto; }
+#menu .menu-content { pointer-events: auto; }
+
+/* Shop overlay */
+#shop-modal { z-index: 920; position: absolute; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; padding: 20px; pointer-events: auto; }
+#shop-modal .shop-content { pointer-events: auto; }
+
+/* Leaderboard overlay */
+#leaderboard-panel { z-index: 930; position: absolute; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; padding: 20px; pointer-events: auto; }
+#leaderboard-panel .leaderboard-content { pointer-events: auto; }
 
 /* Bottom bar below overlays, but visible */
 .bottom-bar { position: absolute; left: 50%; transform: translateX(-50%); top: calc(50% + 40px); display:flex; flex-direction:column; align-items:center; gap:10px; z-index: 800; pointer-events: auto; }
@@ -1092,6 +1124,89 @@ html, body {
   background: #0f1821;
   max-width: 100%;
   height: auto;
+}
+
+/* Стили для кнопок главного меню */
+.main-menu-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.main-menu-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 16px;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  min-height: 80px;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(135deg, #475569, #334155);
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+.main-menu-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+.main-menu-btn:active {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.main-menu-btn .btn-icon {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+
+.main-menu-btn.btn-success {
+  background: linear-gradient(135deg, #059669, #047857);
+  box-shadow: 0 4px 16px rgba(5, 150, 105, 0.3);
+}
+
+.main-menu-btn.btn-success:hover {
+  background: linear-gradient(135deg, #047857, #065f46);
+  box-shadow: 0 8px 25px rgba(5, 150, 105, 0.4);
+}
+
+.main-menu-btn.btn-danger {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.3);
+}
+
+.main-menu-btn.btn-danger:hover {
+  background: linear-gradient(135deg, #b91c1c, #991b1b);
+  box-shadow: 0 8px 25px rgba(220, 38, 38, 0.4);
+}
+
+.main-menu-btn.btn-primary {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
+}
+
+.main-menu-btn.btn-primary:hover {
+  background: linear-gradient(135deg, #1d4ed8, #1e40af);
+  box-shadow: 0 8px 25px rgba(37, 99, 235, 0.4);
+}
+
+.main-menu-btn.btn-secondary {
+  background: linear-gradient(135deg, #64748b, #475569);
+  box-shadow: 0 4px 16px rgba(100, 116, 139, 0.3);
+}
+
+.main-menu-btn.btn-secondary:hover {
+  background: linear-gradient(135deg, #475569, #334155);
+  box-shadow: 0 8px 25px rgba(100, 116, 139, 0.4);
 }
 
 /* Вторичная кнопка для навигации */

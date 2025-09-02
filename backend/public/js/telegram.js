@@ -118,13 +118,10 @@ class TelegramWebApp {
     setupMainButton() {
         if (!this.isTelegram) return;
 
-        // Настройка главной кнопки
-        this.webApp.MainButton.setText('🎮 Играть');
-        this.webApp.MainButton.show();
-        
-        this.webApp.MainButton.onClick(() => {
-            this.handleMainButtonClick();
-        });
+        // Скрываем главную кнопку - используем нашу собственную кнопку "Начать игру"
+        this.webApp.MainButton.hide();
+
+        console.log('✅ Main button hidden - using our own start button');
     }
 
     setupBackButton() {

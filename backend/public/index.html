@@ -9,8 +9,13 @@
     <title>Dino Runner</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='50' x='10' font-size='48'%3E%F0%9F%A6%95%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="./css/main.css">
+    <link rel="stylesheet" href="./css/offline-mode.css">
+    <link rel="stylesheet" href="./css/button-styles.css">
   </head>
   <body>
+    <!-- Индикатор статуса соединения -->
+    <div id="connection-status" class="connection-status">🔴 Оффлайн</div>
+    
     <div id="app" class="overlay-open">
       <div id="offline-banner" class="offline-banner hidden">OFFLINE · очки/монеты не сохраняются · лидерборд недоступен</div>
       <!-- Игровая область -->
@@ -37,8 +42,8 @@
         <div id="tap-to-start" class="gameover" role="dialog" aria-modal="true" aria-labelledby="start-title">
           <div class="gameover-content start-content">
             <div class="window-header">
-              <h2 class="window-title">🚀 Приветственное окно</h2>
-              <p class="window-subtitle">Добро пожаловать в игру</p>
+              <h2 class="window-title">🎮 Добро пожаловать в игру</h2>
+              <p class="window-subtitle" id="welcome-subtitle">Привет, игрок!</p>
             </div>
             <h1 class="game-title">🦕 Dino Runner</h1>
             <p class="game-subtitle">Прыгай и избегай препятствий!</p>
@@ -144,11 +149,7 @@
           </button>
         </div>
 
-        <!-- Пауза внизу (под землей, скрыта до старта игры) -->
-        <button id="btn-pause" class="btn-large btn-secondary hidden" aria-pressed="false" aria-label="Пауза">
-          <span class="btn-icon">⏸️</span>
-          <span>Пауза</span>
-        </button>
+
       </div>
 
 
@@ -179,6 +180,10 @@
               <span class="menu-icon">💰</span>
               <span class="menu-text">Вывод</span>
             </button>
+            <button id="btn-nickname" class="menu-btn">
+              <span class="menu-icon">👤</span>
+              <span class="menu-text">Никнейм</span>
+            </button>
             <button id="btn-theme" class="menu-btn">
               <span class="menu-icon">🌙</span>
               <span class="menu-text">Тема</span>
@@ -201,6 +206,10 @@
           <button id="btn-dev-tools" class="menu-btn">
             <span class="menu-icon">🔧</span>
             <span class="menu-text">Dev Tools</span>
+          </button>
+          <button id="btn-menu-close" class="menu-btn menu-btn-exit">
+            <span class="menu-icon">✖️</span>
+            <span class="menu-text">Выход</span>
           </button>
           <div id="dev-tools-panel" class="dev-tools-panel hidden">
             <div class="dev-section">
@@ -326,9 +335,12 @@
 
     </div>
 
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="js/telegram.js"></script>
     <script src="js/services/api.js"></script>
     <script src="js/services/backendIntegration.js"></script>
+    <script src="js/services/connectionMonitor.js"></script>
+    <script src="js/services/telegramAuth.js"></script>
     <script type="module" src="./js/main.js"></script>
 
     <!-- ИНСТРУМЕНТЫ РАЗРАБОТЧИКА - УДАЛИТЬ ПЕРЕД РЕЛИЗОМ -->
