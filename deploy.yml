@@ -1,16 +1,23 @@
-name: Deploy
-on:
-  push:
-    branches: [ "main" ]
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: bash /var/www/dinorunner/deploy.sh
+  name: Deploy
+  on:
+    push:
+      branches: [ "main" ]
+  jobs:
+    deploy:
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+
+        - name: Setup SSH
+          uses: webfactory/ssh-agent@v0.9.0
+          with:
+            ssh-private-key: ${{ secrets.SSH_KEY }}
+
+        - name: Deploy over SSH
+          env:
+            SSH_HOST: ${{ secrets.SSH_HOST }}
+            SSH_USER: ${{ secrets.SSH_USER }}
+            SSH_PORT: ${{ secrets.SSH_PORT }}
+          run: |
+            ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "bash /var/www/dinorunner/deploy.sh"
