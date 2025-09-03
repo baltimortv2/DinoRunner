@@ -1,7 +1,8 @@
 const express = require('express');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const router = express.Router();
-const { query, get, run, transaction } = require('../database/sqlite-connection');
+const { get, run } = require('../database/sqlite-connection');
 
 // Валидация Telegram initData
 function validateInitData(initData, botToken) {
@@ -29,176 +30,123 @@ function validateInitData(initData, botToken) {
   }
 }
 
-// POST /api/auth/telegram
-router.post('/telegram', async (req, res) => {
+// POST /api/auth/telegram/validate
+router.post('/telegram/validate', async (req, res) => {
   try {
     const { initData } = req.body;
-    
+
     if (!initData) {
-      return res.status(400).json({ error: 'initData is required' });
+      return res.status(400).json({ success: false, error: 'initData is required' });
     }
-    
+
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!botToken) {
-      console.error('TELEGRAM_BOT_TOKEN not configured');
-      return res.status(500).json({ error: 'Server configuration error' });
+      console.error('FATAL: TELEGRAM_BOT_TOKEN is not configured!');
+      return res.status(500).json({ success: false, error: 'Server configuration error' });
     }
-    
+
     if (!validateInitData(initData, botToken)) {
-      return res.status(401).json({ error: 'Invalid initData signature' });
+      console.warn('Invalid initData signature received');
+      return res.status(401).json({ success: false, error: 'Invalid initData signature' });
     }
-    
-    // Парсим initData для получения user_id
+
+    // Парсим данные пользователя из initData
     const urlParams = new URLSearchParams(initData);
-    const userId = urlParams.get('user.id');
-    const username = urlParams.get('user.username');
-    const firstName = urlParams.get('user.first_name');
-    const lastName = urlParams.get('user.last_name');
-    
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID not found in initData' });
+    const userJson = urlParams.get('user');
+    const startParam = urlParams.get('start_param'); // Получаем реферальный код
+
+    if (!userJson) {
+      return res.status(400).json({ success: false, error: 'User data not found in initData' });
     }
+
+    const userData = JSON.parse(userJson);
+    const { id: telegram_id, first_name, last_name, username } = userData;
     
-    // Проверяем, есть ли уже пользователь
-    let user = await get('SELECT id, telegram_id, username, first_name, last_name, points, coins, era, created_at FROM users WHERE telegram_id = ?', [userId]);
+    // Ищем или создаем пользователя
+    let user = await get('SELECT * FROM users WHERE telegram_id = ?', [telegram_id]);
     
     if (!user) {
+      // Проверяем, есть ли реферер
+      let referrerId = null;
+      if (startParam) {
+        const referrer = await get('SELECT id FROM users WHERE telegram_id = ?', [startParam]);
+        if (referrer) {
+          referrerId = referrer.id;
+        }
+      }
+
       // Создаем нового пользователя
       const result = await run(
-        `INSERT INTO users (
-          telegram_id, username, first_name, last_name, 
-          points, coins, era, games_played, best_score, 
-          active_character, active_ground, active_enemies_ground, 
-          active_enemies_air, active_clouds
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          userId, username || null, firstName || null, lastName || null,
-          0, 0, 1, 0, 0,
-          'standart', 'standart', 'standart', 'standart', 'standart'
-        ]
+        `INSERT INTO users (telegram_id, username, first_name, last_name, coins, era, referrer_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [telegram_id, username, first_name, last_name, 0, 1, referrerId]
       );
-      
-      // Получаем созданного пользователя
-      user = await get('SELECT id, telegram_id, username, first_name, last_name, points, coins, era, created_at FROM users WHERE telegram_id = ?', [userId]);
-      
-      // Создаем стандартные скины для пользователя
-      const defaultSkins = [
-        'char-standart', 'ground-standart', 'enemies-ground-standart', 
-        'enemies-air-standart', 'clouds-standart'
-      ];
-      
-      for (const skinId of defaultSkins) {
-        await run(
-          'INSERT INTO user_skins (user_id, skin_id, owned, active) VALUES (?, ?, ?, ?)',
-          [user.id, skinId, 1, 1]
-        );
+      user = await get('SELECT * FROM users WHERE id = ?', [result.lastID]);
+      console.log(`New user created: ${username} (ID: ${telegram_id})`);
+
+      // Если есть реферер, записываем связь в таблицу referrals
+      if (referrerId) {
+        // Проверяем лимит рефералов (10)
+        const refCount = await get('SELECT COUNT(*) as count FROM referrals WHERE referrer_id = ?', [referrerId]);
+        if (refCount.count < 10) {
+          await run('INSERT INTO referrals (referrer_id, referee_id) VALUES (?, ?)', [referrerId, user.id]);
+          console.log(`Referral link processed: ${user.id} -> ${referrerId}`);
+        } else {
+          console.warn(`Referrer ${referrerId} has reached the referral limit.`);
+        }
       }
-      
-      console.log(`New user created: ${userId} (${username || firstName})`);
     } else {
-      // Обновляем существующего пользователя
-      if (username !== user.username || firstName !== user.first_name || lastName !== user.last_name) {
+      // Обновляем данные существующего пользователя, если они изменились
+      if (user.username !== username || user.first_name !== first_name || user.last_name !== last_name) {
         await run(
           'UPDATE users SET username = ?, first_name = ?, last_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          [username || null, firstName || null, lastName || null, user.id]
+          [username, first_name, last_name, user.id]
         );
-        
-        user.username = username || null;
-        user.first_name = firstName || null;
-        user.last_name = lastName || null;
       }
     }
     
     // Создаем JWT токен
-    const token = crypto.createHash('sha256')
-      .update(`${userId}:${Date.now()}:${process.env.JWT_SECRET}`)
-      .digest('hex');
+    const token = jwt.sign({ id: user.id, telegram_id: user.telegram_id }, process.env.JWT_SECRET, { expiresIn: '7d' });
     
     res.json({
       success: true,
+      token,
       user: {
         id: user.id,
         telegramId: user.telegram_id,
         username: user.username,
         firstName: user.first_name,
         lastName: user.last_name,
-        points: user.points || 0,
-        coins: user.coins || 0,
-        era: user.era || 1,
-        gamesPlayed: user.games_played || 0,
-        bestScore: user.best_score || 0,
-        createdAt: user.created_at
+        stats: {
+            totalScore: user.points || 0,
+            totalCoins: user.coins || 0,
+            gamesPlayed: user.games_played || 0,
+            bestScore: user.best_score || 0,
+            currentEra: user.era || 1
+        }
       },
-      token,
       message: 'Authentication successful'
     });
     
   } catch (error) {
-    console.error('Auth error:', error);
-    res.status(500).json({ error: 'Authentication failed' });
+    console.error('Authentication error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error during authentication' });
   }
 });
 
-// GET /api/auth/verify
+// Все старые эндпоинты ниже можно удалить или заархивировать,
+// так как они дублируют логику или используют небезопасные методы
+router.post('/telegram', async (req, res) => {
+    res.status(404).json({error: "This endpoint is deprecated. Use /telegram/validate instead."})
+});
+
 router.get('/verify', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    
-    if (!token) {
-      return res.status(401).json({ error: 'Token required' });
-    }
-    
-    // В реальном приложении здесь будет валидация JWT токена
-    // Пока просто возвращаем успех
-    res.json({
-      success: true,
-      message: 'Token is valid'
-    });
-  } catch (error) {
-    console.error('Token verification error:', error);
-    res.status(500).json({ error: 'Token verification failed' });
-  }
+    res.status(404).json({error: "This endpoint is deprecated."})
 });
 
-// GET /api/auth/profile
 router.get('/profile', async (req, res) => {
-  try {
-    const userId = req.headers['x-user-id'];
-    
-    if (!userId) {
-      return res.status(401).json({ error: 'User ID required' });
-    }
-    
-    const user = await get(
-      'SELECT id, telegram_id, username, first_name, last_name, points, coins, era, games_played, best_score, created_at FROM users WHERE telegram_id = ?',
-      [userId]
-    );
-    
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    res.json({
-      success: true,
-      user: {
-        id: user.id,
-        telegramId: user.telegram_id,
-        username: user.username,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        points: user.points || 0,
-        coins: user.coins || 0,
-        era: user.era || 1,
-        gamesPlayed: user.games_played || 0,
-        bestScore: user.best_score || 0,
-        createdAt: user.created_at
-      }
-    });
-  } catch (error) {
-    console.error('Get profile error:', error);
-    res.status(500).json({ error: 'Failed to get profile' });
-  }
+    res.status(404).json({error: "This endpoint is deprecated. Use /api/user/profile instead."})
 });
+
 
 module.exports = router;
 

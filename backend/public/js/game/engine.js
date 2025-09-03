@@ -157,6 +157,13 @@ export class Game {
     this.paused = true;
   }
 
+  /**
+   * Проверяет, запущена ли игра
+   */
+  isRunning() {
+    return this.running && !this.gameOver;
+  }
+
   resumeWithCountdown() {
     this._countdown = 3000; // 3 sec
     this._countdownStarted = false;
@@ -414,6 +421,28 @@ export class Game {
     gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
     osc.start();
     osc.stop(this.audioContext.currentTime + duration);
+  }
+
+  /**
+   * Возвращает текущий счет
+   */
+  getScore() {
+    return this.score;
+  }
+
+  /**
+   * Возобновляет игру
+   */
+  resume() {
+    this.paused = false;
+    
+    // Показываем кнопку паузы при возобновлении игры
+    const pauseBtn = document.getElementById('btn-pause');
+    if (pauseBtn && this.running && !this.gameOver) {
+      pauseBtn.classList.remove('hidden');
+      pauseBtn.disabled = false;
+      pauseBtn.removeAttribute('aria-disabled');
+    }
   }
 }
 

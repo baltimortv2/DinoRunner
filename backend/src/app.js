@@ -65,6 +65,7 @@ app.use(helmet({
       "style-src": ["'self'", "'unsafe-inline'"],
       "worker-src": ["'self'", "blob:"],
       "frame-src": ["'self'", "https://t.me", "https://web.telegram.org"],
+      "frame-ancestors": ["'self'", "https://web.telegram.org", "https://t.me"],
       "object-src": ["'none'"],
       "base-uri": ["'self'"],
       "form-action": ["'self'"],
@@ -75,12 +76,28 @@ app.use(helmet({
 
 // Дублируем CSP заголовок для nginx кешей и статических ответов
 app.use((req, res, next) => {
-  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; font-src 'self' https: data:; form-action 'self'; frame-ancestors 'self'; img-src 'self' data: blob:; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org blob:; script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https: wss: blob:");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; font-src 'self' https: data:; form-action 'self'; frame-ancestors 'self' https://web.telegram.org https://t.me; img-src 'self' data: blob:; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org blob:; script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' https: wss: blob:");
   next();
 });
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  origin: (origin, callback) => {
+    // Разрешаем запросы от Telegram WebApp
+    const allowedOrigins = [
+      'https://web.telegram.org',
+      'https://t.me',
+      process.env.FRONTEND_URL || 'http://localhost:3000'
+    ];
+    
+    // Разрешаем запросы без origin (например, из мобильного приложения)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true); // В продакшене разрешаем все для Telegram
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Telegram-User-Id', 'X-Telegram-Init-Data']
 }));
 
 app.use(express.json({ limit: '10mb' }));
@@ -116,6 +133,7 @@ app.use('/api/game', require('./routes/game'));
 app.use('/api/shop', require('./routes/shop'));
 app.use('/api/economy', require('./routes/economy'));
 app.use('/api/referrals', require('./routes/referrals'));
+app.use('/api/withdrawals', require('./routes/withdrawals'));
 
 // Test endpoint for development
 app.get('/api/test', (req, res) => {

@@ -277,14 +277,13 @@ class UserService {
   }
 
   /**
-   * Получает топ пользователей по high score
+   * Получает топ пользователей по количеству монет
    */
   async getTopPlayers(limit = 10) {
     try {
       const rows = await query(`
         SELECT * FROM users
-        WHERE highScore > 0
-        ORDER BY highScore DESC, gamesPlayed DESC
+        ORDER BY coins DESC, highScore DESC
         LIMIT ?
       `, [limit]);
 
@@ -401,43 +400,41 @@ class UserService {
   }
 
   /**
-   * Списывает монеты у пользователя
+   * Завершает игровую сессию, обновляет счет и начисляет реферальный бонус
    */
-  async spendCoins(telegramId, amount) {
+  async endGameSession(telegramId, score) {
     try {
       const user = await this.findByTelegramId(telegramId);
-
       if (!user) {
         throw new Error('User not found');
       }
 
-      user.spendCoins(amount);
-      await this.update(user);
-
-      return user;
-    } catch (error) {
-      console.error('❌ Error spending coins:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Обновляет счет пользователя
-   */
-  async updateScore(telegramId, score) {
-    try {
-      const user = await this.findByTelegramId(telegramId);
-
-      if (!user) {
-        throw new Error('User not found');
-      }
-
+      // 1. Обновляем счет самого игрока
       user.updateScore(score);
       await this.update(user);
 
+      // 2. Проверяем, есть ли у игрока реферер
+      if (user.referrer_id) {
+        const referrer = await this.findById(user.referrer_id);
+        if (referrer) {
+          // 3. Начисляем 10% от очков в качестве бонуса
+          const bonus = Math.floor(score * 0.10);
+          if (bonus > 0) {
+            await this.addPoints(referrer.telegramId, bonus);
+            
+            // 4. Записываем транзакцию в referral_earnings
+            await run(
+              'INSERT INTO referral_earnings (referrer_id, referee_id, points_earned) VALUES (?, ?, ?)',
+              [referrer.id, user.id, bonus]
+            );
+            console.log(`Referral bonus of ${bonus} points awarded to ${referrer.telegramId} from ${telegramId}`);
+          }
+        }
+      }
+
       return user;
     } catch (error) {
-      console.error('❌ Error updating score:', error);
+      console.error('❌ Error ending game session:', error);
       throw error;
     }
   }
@@ -483,6 +480,175 @@ class UserService {
   }
 
   /**
+   * Добавляет очки пользователю
+   */
+  async addPoints(telegramId, amount) {
+    try {
+      const user = await this.findByTelegramId(telegramId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+      user.addPoints(amount);
+      await this.update(user);
+      return user;
+    } catch (error) {
+      console.error('❌ Error adding points:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Списывает очки у пользователя
+   */
+  async spendPoints(telegramId, amount) {
+    try {
+      const user = await this.findByTelegramId(telegramId);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      user.spendPoints(amount);
+      await this.update(user);
+
+      return user;
+    } catch (error) {
+      console.error('❌ Error spending points:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Обновляет эру пользователя на основе общего количества монет
+   */
+  async updateEra(telegramId) {
+    try {
+      const user = await this.findByTelegramId(telegramId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Получаем общее количество выданных монет
+      const { query } = require('../database/sqlite-connection');
+      const result = await query('SELECT COALESCE(SUM(amount), 0) as total_issued FROM claims WHERE status = ?', ['completed']);
+      const totalIssued = parseInt(result[0]?.total_issued) || 0;
+
+      // Определяем эру на основе количества выданных монет
+      let newEra = 1;
+      if (totalIssued >= 835_000_000) newEra = 14;
+      else if (totalIssued >= 815_000_000) newEra = 13;
+      else if (totalIssued >= 775_000_000) newEra = 12;
+      else if (totalIssued >= 725_000_000) newEra = 11;
+      else if (totalIssued >= 675_000_000) newEra = 10;
+      else if (totalIssued >= 600_000_000) newEra = 9;
+      else if (totalIssued >= 500_000_000) newEra = 8;
+      else if (totalIssued >= 400_000_000) newEra = 7;
+      else if (totalIssued >= 300_000_000) newEra = 6;
+      else if (totalIssued >= 200_000_000) newEra = 5;
+      else if (totalIssued >= 100_000_000) newEra = 4;
+      else if (totalIssued >= 50_000_000) newEra = 3;
+      else if (totalIssued >= 10_000_000) newEra = 2;
+
+      if (newEra !== user.era) {
+        user.era = newEra;
+        await this.update(user);
+        console.log(`🔄 User ${telegramId} era updated to ${newEra}`);
+      }
+
+      return user;
+    } catch (error) {
+      console.error('❌ Error updating era:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Получает статистику экономики
+   */
+  async getEconomyStats() {
+    try {
+      const { query, get } = require('../database/sqlite-connection');
+      
+      // Общее количество выданных монет
+      const issuedResult = await get('SELECT COALESCE(SUM(amount), 0) as issued FROM claims WHERE status = ?', ['completed']);
+      const issued = parseInt(issuedResult.issued) || 0;
+      
+      // Общее количество пользователей
+      const usersResult = await get('SELECT COUNT(*) as total_users FROM users');
+      const totalUsers = parseInt(usersResult.total_users) || 0;
+      
+      // Общее количество очков у всех пользователей
+      const pointsResult = await get('SELECT COALESCE(SUM(score), 0) as total_points FROM users');
+      const totalPoints = parseInt(pointsResult.total_points) || 0;
+      
+      // Общее количество монет у всех пользователей
+      const coinsResult = await get('SELECT COALESCE(SUM(coins), 0) as total_coins FROM users');
+      const totalCoins = parseInt(coinsResult.total_coins) || 0;
+
+      return {
+        totalSupply: 850_000_000,
+        issued: issued,
+        remaining: 850_000_000 - issued,
+        totalUsers: totalUsers,
+        totalPoints: totalPoints,
+        totalCoins: totalCoins
+      };
+    } catch (error) {
+      console.error('❌ Error getting economy stats:', error);
+      return {
+        totalSupply: 850_000_000,
+        issued: 0,
+        remaining: 850_000_000,
+        totalUsers: 0,
+        totalPoints: 0,
+        totalCoins: 0
+      };
+    }
+  }
+
+  /**
+   * Списывает монеты у пользователя
+   */
+  async spendCoins(telegramId, amount) {
+    try {
+      const user = await this.findByTelegramId(telegramId);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      user.spendCoins(amount);
+      await this.update(user);
+
+      return user;
+    } catch (error) {
+      console.error('❌ Error spending coins:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Обновляет счет пользователя
+   */
+  async updateScore(telegramId, score) {
+    try {
+      const user = await this.findByTelegramId(telegramId);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      user.updateScore(score);
+      await this.update(user);
+
+      return user;
+    } catch (error) {
+      console.error('❌ Error updating score:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Удаляет пользователя (для админских функций)
    */
   async delete(telegramId) {
@@ -505,6 +671,146 @@ class UserService {
     } catch (error) {
       console.error('❌ Error getting user count:', error);
       return 0;
+    }
+  }
+
+  /**
+   * Получение истории выводов пользователя
+   */
+  async getUserWithdrawals(telegramId) {
+    try {
+      const user = await this.findByTelegramId(telegramId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const { query } = require('../database/sqlite-connection');
+      const withdrawals = await query(
+        `SELECT id, amount, ton_address, status, created_at, processed_at, tx_hash
+         FROM withdrawals 
+         WHERE user_id = ? 
+         ORDER BY created_at DESC`,
+        [user.id]
+      );
+
+      return withdrawals || [];
+    } catch (error) {
+      console.error('❌ Error getting user withdrawals:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Получение статистики выводов (для админов)
+   */
+  async getWithdrawalStats() {
+    try {
+      const { query, get } = require('../database/sqlite-connection');
+
+      // Общее количество выводов
+      const totalResult = await get('SELECT COUNT(*) as count FROM withdrawals');
+      const total = parseInt(totalResult.count) || 0;
+
+      // Общая сумма выведенных монет
+      const completedResult = await get(
+        'SELECT COALESCE(SUM(amount), 0) as total FROM withdrawals WHERE status = ?',
+        ['completed']
+      );
+      const completed = parseInt(completedResult.total) || 0;
+
+      // Сумма ожидающих обработки
+      const pendingResult = await get(
+        'SELECT COALESCE(SUM(amount), 0) as total FROM withdrawals WHERE status = ?',
+        ['pending']
+      );
+      const pending = parseInt(pendingResult.total) || 0;
+
+      // Сумма отклоненных
+      const rejectedResult = await get(
+        'SELECT COALESCE(SUM(amount), 0) as total FROM withdrawals WHERE status = ?',
+        ['rejected']
+      );
+      const rejected = parseInt(rejectedResult.total) || 0;
+
+      // Последние 10 выводов
+      const recent = await query(
+        `SELECT w.amount, w.ton_address, w.status, w.created_at, u.username, u.first_name
+         FROM withdrawals w
+         JOIN users u ON w.user_id = u.id
+         ORDER BY w.created_at DESC
+         LIMIT 10`
+      );
+
+      return {
+        total,
+        completed,
+        pending,
+        rejected,
+        recent: recent || []
+      };
+    } catch (error) {
+      console.error('❌ Error getting withdrawal stats:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Обработка вывода (для админов)
+   */
+  async processWithdrawal(withdrawalId, action, adminTelegramId, txHash = null) {
+    try {
+      const { get, run } = require('../database/sqlite-connection');
+
+      // Получаем запрос на вывод
+      const withdrawal = await get('SELECT * FROM withdrawals WHERE id = ?', [withdrawalId]);
+      if (!withdrawal) {
+        throw new Error('Withdrawal not found');
+      }
+
+      if (withdrawal.status !== 'pending') {
+        throw new Error('Withdrawal already processed');
+      }
+
+      // Получаем админа
+      const admin = await this.findByTelegramId(adminTelegramId);
+      if (!admin || admin.role !== 'admin') {
+        throw new Error('Admin access required');
+      }
+
+      let newStatus, message;
+
+      if (action === 'approve') {
+        newStatus = 'completed';
+        message = 'Withdrawal approved';
+        
+        // Здесь должна быть интеграция с TON кошельком для отправки монет
+        // Пока что просто помечаем как завершенный
+        
+      } else if (action === 'reject') {
+        newStatus = 'rejected';
+        message = 'Withdrawal rejected';
+        
+        // Возвращаем монеты пользователю
+        await this.addCoins(withdrawal.telegram_id, withdrawal.amount);
+        
+      } else {
+        throw new Error('Invalid action');
+      }
+
+      // Обновляем статус
+      await run(
+        `UPDATE withdrawals 
+         SET status = ?, processed_at = CURRENT_TIMESTAMP, tx_hash = ?, admin_id = ?
+         WHERE id = ?`,
+        [newStatus, txHash, admin.id, withdrawalId]
+      );
+
+      console.log(`✅ Withdrawal ${action}ed: ID ${withdrawalId} by admin ${adminTelegramId}`);
+
+      return { success: true, message, newStatus };
+    } catch (error) {
+      console.error('❌ Error processing withdrawal:', error);
+      throw error;
     }
   }
 }

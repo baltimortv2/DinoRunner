@@ -166,15 +166,19 @@ class User {
     this.updatedAt = new Date();
   }
 
+  addPoints(amount) {
+    this.score = (this.score || 0) + amount;
+  }
+
   /**
    * Обновляет счет
    */
-  updateScore(score) {
-    this.score = score;
+  updateScore(newScore) {
+    this.score = (this.score || 0) + newScore;
 
-    if (score > this.highScore) {
-      this.highScore = score;
-      this.stats.bestScore = score;
+    if (newScore > this.highScore) {
+      this.highScore = newScore;
+      this.stats.bestScore = newScore;
     }
 
     this.gamesPlayed++;

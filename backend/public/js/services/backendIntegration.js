@@ -3,10 +3,10 @@
  * Connects the game engine with the backend API
  */
 
-class BackendIntegration {
-  constructor(gameEngine) {
+export class BackendIntegration {
+  constructor(gameEngine, apiService) {
     this.game = gameEngine;
-    this.api = window.apiService;
+    this.api = apiService; // Use injected apiService
     this.currentSessionId = null;
     this.heartbeatInterval = null;
     this.isConnected = false;
@@ -267,5 +267,3 @@ class BackendIntegration {
 
   getConnectionStatus() { return { connected: this.isConnected, sessionId: this.currentSessionId, lastSync: this.lastSyncTime }; }
 }
-
-window.BackendIntegration = BackendIntegration;

@@ -1,166 +1,118 @@
 -- ==================================================================
--- DINO RUNNER DATABASE SCHEMA
+-- DINO RUNNER DATABASE SCHEMA (SQLite)
 -- ==================================================================
 
 -- Создание таблицы пользователей
 CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
-    telegram_id BIGINT UNIQUE NOT NULL,
-    username VARCHAR(255),
-    first_name VARCHAR(255),
-    last_name VARCHAR(255),
-    points BIGINT DEFAULT 0,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id INTEGER UNIQUE NOT NULL,
+    username TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    points INTEGER DEFAULT 0,
     coins INTEGER DEFAULT 0,
     era INTEGER DEFAULT 1,
     games_played INTEGER DEFAULT 0,
     best_score INTEGER DEFAULT 0,
-    last_played TIMESTAMP,
-    active_character VARCHAR(50) DEFAULT 'standart',
-    active_ground VARCHAR(50) DEFAULT 'standart',
-    active_enemies_ground VARCHAR(50) DEFAULT 'standart',
-    active_enemies_air VARCHAR(50) DEFAULT 'standart',
-    active_clouds VARCHAR(50) DEFAULT 'standart',
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    last_played TEXT,
+    active_character TEXT DEFAULT 'standart',
+    active_ground TEXT DEFAULT 'standart',
+    active_enemies_ground TEXT DEFAULT 'standart',
+    active_enemies_air TEXT DEFAULT 'standart',
+    active_clouds TEXT DEFAULT 'standart',
+    referrer_id INTEGER, -- ID пользователя, который пригласил этого
+    role TEXT DEFAULT 'user', -- user, admin
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (referrer_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- Создание таблицы игровых сессий
 CREATE TABLE IF NOT EXISTS game_sessions (
-    id SERIAL PRIMARY KEY,
-    session_id VARCHAR(255) UNIQUE NOT NULL,
-    user_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-    start_time TIMESTAMP DEFAULT NOW(),
-    end_time TIMESTAMP,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT UNIQUE NOT NULL,
+    user_id INTEGER NOT NULL,
+    start_time TEXT DEFAULT CURRENT_TIMESTAMP,
+    end_time TEXT,
     final_score INTEGER,
-    duration BIGINT, -- в миллисекундах
-    is_active BOOLEAN DEFAULT true,
-    last_heartbeat TIMESTAMP DEFAULT NOW(),
-    created_at TIMESTAMP DEFAULT NOW()
+    duration INTEGER, -- в миллисекундах
+    is_active BOOLEAN DEFAULT 1,
+    last_heartbeat TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Создание таблицы скинов пользователей
 CREATE TABLE IF NOT EXISTS user_skins (
-    id SERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-    skin_id VARCHAR(100) NOT NULL,
-    owned BOOLEAN DEFAULT false,
-    active BOOLEAN DEFAULT false,
-    created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(user_id, skin_id)
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    skin_id TEXT NOT NULL,
+    owned BOOLEAN DEFAULT 0,
+    active BOOLEAN DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, skin_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Создание таблицы транзакций обмена
 CREATE TABLE IF NOT EXISTS claims (
-    id SERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
     amount INTEGER NOT NULL, -- количество монет
-    points_spent BIGINT NOT NULL, -- потраченные очки
-    exchange_rate BIGINT NOT NULL, -- курс обмена
-    status VARCHAR(50) DEFAULT 'pending', -- pending, completed, failed
-    created_at TIMESTAMP DEFAULT NOW()
+    points_spent INTEGER NOT NULL, -- потраченные очки
+    exchange_rate INTEGER NOT NULL, -- курс обмена
+    status TEXT DEFAULT 'pending', -- pending, completed, failed
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Создание таблицы выводов монет
 CREATE TABLE IF NOT EXISTS withdrawals (
-    id SERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
     amount INTEGER NOT NULL,
-    ton_address VARCHAR(255) NOT NULL,
-    status VARCHAR(50) DEFAULT 'pending', -- pending, completed, failed
-    created_at TIMESTAMP DEFAULT NOW(),
-    completed_at TIMESTAMP
+    ton_address TEXT NOT NULL,
+    status TEXT DEFAULT 'pending', -- pending, completed, failed, rejected
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    processed_at TEXT,
+    tx_hash TEXT,
+    admin_id INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- Создание таблицы рефералов
 CREATE TABLE IF NOT EXISTS referrals (
-    id SERIAL PRIMARY KEY,
-    referrer_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-    referee_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-    join_date TIMESTAMP DEFAULT NOW(),
-    created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(referee_id) -- у пользователя может быть только один реферер
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    referrer_id INTEGER NOT NULL, -- Кто пригласил
+    referee_id INTEGER NOT NULL UNIQUE, -- Кого пригласили (может быть только один реферер)
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (referrer_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (referee_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Создание таблицы заработка от рефералов
 CREATE TABLE IF NOT EXISTS referral_earnings (
-    id SERIAL PRIMARY KEY,
-    referrer_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-    referee_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-    earnings INTEGER NOT NULL, -- количество монет
-    created_at TIMESTAMP DEFAULT NOW()
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    referrer_id INTEGER NOT NULL,
+    referee_id INTEGER NOT NULL,
+    points_earned INTEGER NOT NULL, -- количество очков
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (referrer_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (referee_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Создание индексов для оптимизации
 CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);
-CREATE INDEX IF NOT EXISTS idx_users_points ON users(points DESC);
+CREATE INDEX IF NOT EXISTS idx_users_coins ON users(coins DESC);
+CREATE INDEX IF NOT EXISTS idx_users_referrer_id ON users(referrer_id);
 CREATE INDEX IF NOT EXISTS idx_game_sessions_user_id ON game_sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_game_sessions_session_id ON game_sessions(session_id);
-CREATE INDEX IF NOT EXISTS idx_game_sessions_active ON game_sessions(is_active);
 CREATE INDEX IF NOT EXISTS idx_user_skins_user_id ON user_skins(user_id);
 CREATE INDEX IF NOT EXISTS idx_claims_user_id ON claims(user_id);
-CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(status);
 CREATE INDEX IF NOT EXISTS idx_withdrawals_user_id ON withdrawals(user_id);
-CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON withdrawals(status);
 CREATE INDEX IF NOT EXISTS idx_referrals_referrer_id ON referrals(referrer_id);
 CREATE INDEX IF NOT EXISTS idx_referrals_referee_id ON referrals(referee_id);
 CREATE INDEX IF NOT EXISTS idx_referral_earnings_referrer_id ON referral_earnings(referrer_id);
-
--- Создание представления для статистики пользователей
-CREATE OR REPLACE VIEW user_stats AS
-SELECT 
-    u.id,
-    u.telegram_id,
-    u.username,
-    u.first_name,
-    u.last_name,
-    u.points,
-    u.coins,
-    u.era,
-    u.games_played,
-    u.best_score,
-    u.last_played,
-    u.active_character,
-    u.active_ground,
-    u.active_enemies_ground,
-    u.active_enemies_air,
-    u.active_clouds,
-    COUNT(r.id) as total_referrals,
-    COALESCE(SUM(re.earnings), 0) as referral_earnings,
-    u.created_at
-FROM users u
-LEFT JOIN referrals r ON u.telegram_id = r.referrer_id
-LEFT JOIN referral_earnings re ON u.telegram_id = re.referrer_id
-GROUP BY u.id, u.telegram_id, u.username, u.first_name, u.last_name, 
-         u.points, u.coins, u.era, u.games_played, u.best_score, 
-         u.last_played, u.active_character, u.active_ground, 
-         u.active_enemies_ground, u.active_enemies_air, u.active_clouds, u.created_at;
-
--- Создание представления для лидерборда
-CREATE OR REPLACE VIEW leaderboard AS
-SELECT 
-    ROW_NUMBER() OVER (ORDER BY u.points DESC) as rank,
-    u.telegram_id,
-    u.username,
-    u.first_name,
-    u.last_name,
-    u.points,
-    u.coins,
-    u.era,
-    u.games_played,
-    u.best_score,
-    u.last_played
-FROM users u
-WHERE u.points > 0
-ORDER BY u.points DESC;
-
--- Комментарии к таблицам
-COMMENT ON TABLE users IS 'Основная таблица пользователей';
-COMMENT ON TABLE game_sessions IS 'Игровые сессии пользователей';
-COMMENT ON TABLE user_skins IS 'Скины пользователей';
-COMMENT ON TABLE claims IS 'Транзакции обмена очков на монеты';
-COMMENT ON TABLE withdrawals IS 'Выводы монет';
-COMMENT ON TABLE referrals IS 'Реферальная система';
-COMMENT ON TABLE referral_earnings IS 'Заработок от рефералов';
 
 -- ==================================================================
 -- ИНИЦИАЛИЗАЦИЯ ЗАВЕРШЕНА

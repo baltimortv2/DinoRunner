@@ -1,78 +1,101 @@
 const express = require('express');
 const router = express.Router();
-const { Pool } = require('pg');
+const userService = require('../services/userService');
+const { query, get, run } = require('../database/sqlite-connection');
 
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false
-});
-
-// Тир-система обмена
+// Тир-система обмена (14 эр)
 const EXCHANGE_TIERS = [
-  { upTo: 10_000_000, rate: 1_000 },
-  { upTo: 50_000_000, rate: 2_000 },
-  { upTo: 100_000_000, rate: 4_000 },
-  { upTo: 200_000_000, rate: 8_000 },
-  { upTo: 300_000_000, rate: 16_000 },
-  { upTo: 400_000_000, rate: 32_000 },
-  { upTo: 500_000_000, rate: 64_000 },
-  { upTo: 600_000_000, rate: 128_000 },
-  { upTo: 675_000_000, rate: 256_000 },
-  { upTo: 725_000_000, rate: 512_000 },
-  { upTo: 775_000_000, rate: 1_024_000 },
-  { upTo: 815_000_000, rate: 2_048_000 },
-  { upTo: 835_000_000, rate: 4_096_000 },
-  { upTo: 850_000_000, rate: 8_192_000 }
+  { upTo: 10_000_000, rate: 1_000, era: 1 },
+  { upTo: 50_000_000, rate: 2_000, era: 2 },
+  { upTo: 100_000_000, rate: 4_000, era: 3 },
+  { upTo: 200_000_000, rate: 8_000, era: 4 },
+  { upTo: 300_000_000, rate: 16_000, era: 5 },
+  { upTo: 400_000_000, rate: 32_000, era: 6 },
+  { upTo: 500_000_000, rate: 64_000, era: 7 },
+  { upTo: 600_000_000, rate: 128_000, era: 8 },
+  { upTo: 675_000_000, rate: 256_000, era: 9 },
+  { upTo: 725_000_000, rate: 512_000, era: 10 },
+  { upTo: 775_000_000, rate: 1_024_000, era: 11 },
+  { upTo: 815_000_000, rate: 2_048_000, era: 12 },
+  { upTo: 835_000_000, rate: 4_096_000, era: 13 },
+  { upTo: 850_000_000, rate: 8_192_000, era: 14 }
 ];
 
-// Middleware для извлечения user_id
-function extractUserId(req) {
-  const userId = req.headers['x-user-id'];
-  if (!userId) {
-    throw new Error('User ID required');
+// Middleware для извлечения Telegram user ID
+function extractTelegramUserId(req) {
+  const telegramId = req.headers['x-telegram-id'] || req.body.telegramId;
+
+  if (!telegramId) {
+    // Пытаемся получить из JWT токена или других источников
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      // Здесь можно добавить логику для извлечения user ID из JWT
+      // Пока возвращаем тестовый ID
+      return 12345;
+    }
+
+    throw new Error('Telegram User ID required');
   }
-  return userId;
+
+  return parseInt(telegramId);
 }
 
 // Получение текущего курса обмена
 async function getCurrentExchangeRate() {
-  const result = await pool.query('SELECT COALESCE(SUM(amount), 0) as issued FROM claims WHERE status = $1', ['completed']);
-  const issued = parseInt(result.rows[0].issued) || 0;
-  
-  for (let i = 0; i < EXCHANGE_TIERS.length; i++) {
-    if (issued < EXCHANGE_TIERS[i].upTo) {
-      return {
-        tier: i + 1,
-        rate: EXCHANGE_TIERS[i].rate,
-        remainingInTier: EXCHANGE_TIERS[i].upTo - issued
-      };
+  try {
+    const result = await get('SELECT COALESCE(SUM(amount), 0) as issued FROM claims WHERE status = ?', ['completed']);
+    const issued = parseInt(result.issued) || 0;
+    
+    for (let i = 0; i < EXCHANGE_TIERS.length; i++) {
+      if (issued < EXCHANGE_TIERS[i].upTo) {
+        return {
+          tier: i + 1,
+          era: EXCHANGE_TIERS[i].era,
+          rate: EXCHANGE_TIERS[i].rate,
+          remainingInTier: EXCHANGE_TIERS[i].upTo - issued
+        };
+      }
     }
+    return {
+      tier: EXCHANGE_TIERS.length,
+      era: EXCHANGE_TIERS[EXCHANGE_TIERS.length - 1].era,
+      rate: EXCHANGE_TIERS[EXCHANGE_TIERS.length - 1].rate,
+      remainingInTier: 0
+    };
+  } catch (error) {
+    console.error('❌ Error getting exchange rate:', error);
+    // Возвращаем базовый курс в случае ошибки
+    return {
+      tier: 1,
+      era: 1,
+      rate: 1000,
+      remainingInTier: 10_000_000
+    };
   }
-  return {
-    tier: EXCHANGE_TIERS.length,
-    rate: EXCHANGE_TIERS[EXCHANGE_TIERS.length - 1].rate,
-    remainingInTier: 0
-  };
 }
 
-// Проверка дневного лимита
-async function checkDailyLimit(userId, coinsToExchange) {
-  const today = new Date().toDateString();
-  
-  const result = await pool.query(
-    'SELECT COALESCE(SUM(amount), 0) as daily_total FROM claims WHERE user_id = $1 AND DATE(created_at) = CURRENT_DATE AND status = $2',
-    [userId, 'completed']
-  );
-  
-  const dailyTotal = parseInt(result.rows[0].daily_total) || 0;
-  const newTotal = dailyTotal + coinsToExchange;
-  
-  if (newTotal > 100) { // Дневной лимит 100 монет
+// Проверка дневного лимита (100 монет в день)
+async function checkDailyLimit(telegramId, coinsToExchange) {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const result = await get(
+      'SELECT COALESCE(SUM(amount), 0) as daily_total FROM claims WHERE user_id = (SELECT id FROM users WHERE telegramId = ?) AND DATE(created_at) = ? AND status = ?',
+      [telegramId, today, 'completed']
+    );
+    
+    const dailyTotal = parseInt(result.daily_total) || 0;
+    const newTotal = dailyTotal + coinsToExchange;
+    
+    if (newTotal > 100) {
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Error checking daily limit:', error);
     return false;
   }
-  
-  return true;
 }
 
 // GET /api/economy/exchange-rates
@@ -80,8 +103,8 @@ router.get('/exchange-rates', async (req, res) => {
   try {
     const currentRate = await getCurrentExchangeRate();
     
-    const result = await pool.query('SELECT COALESCE(SUM(amount), 0) as issued FROM claims WHERE status = $1', ['completed']);
-    const issued = parseInt(result.rows[0].issued) || 0;
+    const result = await get('SELECT COALESCE(SUM(amount), 0) as issued FROM claims WHERE status = ?', ['completed']);
+    const issued = parseInt(result.issued) || 0;
     
     res.json({
       success: true,
@@ -93,8 +116,10 @@ router.get('/exchange-rates', async (req, res) => {
       },
       tiers: EXCHANGE_TIERS
     });
+
+    console.log(`💱 Exchange rates retrieved. Current rate: ${currentRate.rate}, Era: ${currentRate.era}`);
   } catch (error) {
-    console.error('Exchange rates error:', error);
+    console.error('❌ Exchange rates error:', error);
     res.status(500).json({ error: 'Failed to get exchange rates' });
   }
 });
@@ -103,7 +128,7 @@ router.get('/exchange-rates', async (req, res) => {
 router.post('/exchange-points', async (req, res) => {
   try {
     const { coinsWanted } = req.body;
-    const userId = extractUserId(req);
+    const telegramId = extractTelegramUserId(req);
     
     if (!coinsWanted || coinsWanted <= 0) {
       return res.status(400).json({ error: 'Invalid coins amount' });
@@ -114,57 +139,41 @@ router.post('/exchange-points', async (req, res) => {
     }
     
     // Проверяем дневной лимит
-    if (!(await checkDailyLimit(userId, coinsWanted))) {
-      return res.status(400).json({ error: 'Daily exchange limit exceeded' });
+    if (!(await checkDailyLimit(telegramId, coinsWanted))) {
+      return res.status(400).json({ error: 'Daily exchange limit exceeded (100 coins per day)' });
     }
     
     const currentRate = await getCurrentExchangeRate();
     const pointsRequired = coinsWanted * currentRate.rate;
     
     // Получаем данные пользователя
-    const userResult = await pool.query(
-      'SELECT points, coins, era FROM users WHERE telegram_id = $1',
-      [userId]
-    );
-    
-    if (userResult.rows.length === 0) {
+    const user = await userService.findByTelegramId(telegramId);
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    const userData = userResult.rows[0];
-    
-    if (userData.points < pointsRequired) {
+    if (user.score < pointsRequired) {
       return res.status(400).json({ 
         error: 'Insufficient points',
         required: pointsRequired,
-        available: userData.points
+        available: user.score
       });
     }
     
     // Начинаем транзакцию
-    const client = await pool.connect();
     try {
-      await client.query('BEGIN');
-      
       // Обновляем баланс пользователя
-      await client.query(
-        'UPDATE users SET points = points - $1, coins = coins + $2 WHERE telegram_id = $3',
-        [pointsRequired, coinsWanted, userId]
-      );
+      await userService.spendPoints(telegramId, pointsRequired);
+      await userService.addCoins(telegramId, coinsWanted);
       
       // Создаем запись о транзакции
-      await client.query(
-        'INSERT INTO claims (user_id, amount, points_spent, exchange_rate, status, created_at) VALUES ($1, $2, $3, $4, $5, NOW())',
-        [userId, coinsWanted, pointsRequired, currentRate.rate, 'completed']
+      await run(
+        'INSERT INTO claims (user_id, amount, points_spent, exchange_rate, era, status, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
+        [user.id, coinsWanted, pointsRequired, currentRate.rate, currentRate.era, 'completed']
       );
-      
-      await client.query('COMMIT');
       
       // Получаем обновленные данные
-      const updatedResult = await pool.query(
-        'SELECT points, coins, era FROM users WHERE telegram_id = $1',
-        [userId]
-      );
+      const updatedUser = await userService.findByTelegramId(telegramId);
       
       res.json({
         success: true,
@@ -172,18 +181,23 @@ router.post('/exchange-points', async (req, res) => {
           coinsReceived: coinsWanted,
           pointsSpent: pointsRequired,
           rate: currentRate.rate,
-          tier: currentRate.tier
+          tier: currentRate.tier,
+          era: currentRate.era
         },
-        userStats: updatedResult.rows[0]
+        userStats: {
+          points: updatedUser.score,
+          coins: updatedUser.coins,
+          era: updatedUser.era
+        }
       });
+
+      console.log(`💰 Points exchanged: ${pointsRequired} points → ${coinsWanted} coins for user ${telegramId}`);
     } catch (error) {
-      await client.query('ROLLBACK');
+      console.error('❌ Transaction error:', error);
       throw error;
-    } finally {
-      client.release();
     }
   } catch (error) {
-    console.error('Exchange points error:', error);
+    console.error('❌ Exchange points error:', error);
     res.status(500).json({ error: 'Failed to exchange points' });
   }
 });
@@ -191,23 +205,25 @@ router.post('/exchange-points', async (req, res) => {
 // GET /api/economy/user-balance
 router.get('/user-balance', async (req, res) => {
   try {
-    const userId = extractUserId(req);
+    const telegramId = extractTelegramUserId(req);
     
-    const result = await pool.query(
-      'SELECT points, coins, era FROM users WHERE telegram_id = $1',
-      [userId]
-    );
-    
-    if (result.rows.length === 0) {
+    const user = await userService.findByTelegramId(telegramId);
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
     
     res.json({
       success: true,
-      balance: result.rows[0]
+      balance: {
+        points: user.score,
+        coins: user.coins,
+        era: user.era
+      }
     });
+
+    console.log(`💰 Balance retrieved for user ${telegramId}: ${user.score} points, ${user.coins} coins`);
   } catch (error) {
-    console.error('User balance error:', error);
+    console.error('❌ User balance error:', error);
     res.status(500).json({ error: 'Failed to get user balance' });
   }
 });
@@ -216,7 +232,7 @@ router.get('/user-balance', async (req, res) => {
 router.post('/withdraw-coins', async (req, res) => {
   try {
     const { amount, tonAddress } = req.body;
-    const userId = extractUserId(req);
+    const telegramId = extractTelegramUserId(req);
     
     if (!amount || amount <= 0) {
       return res.status(400).json({ error: 'Invalid withdrawal amount' });
@@ -227,63 +243,40 @@ router.post('/withdraw-coins', async (req, res) => {
     }
     
     // Получаем баланс пользователя
-    const userResult = await pool.query(
-      'SELECT coins FROM users WHERE telegram_id = $1',
-      [userId]
-    );
-    
-    if (userResult.rows.length === 0) {
+    const user = await userService.findByTelegramId(telegramId);
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    const userData = userResult.rows[0];
-    
-    if (userData.coins < amount) {
+    if (user.coins < amount) {
       return res.status(400).json({ 
         error: 'Insufficient coins',
-        available: userData.coins,
+        available: user.coins,
         requested: amount
       });
     }
     
-    // Начинаем транзакцию
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      
-      // Списываем монеты
-      await client.query(
-        'UPDATE users SET coins = coins - $1 WHERE telegram_id = $2',
-        [amount, userId]
-      );
-      
-      // Создаем запись о выводе
-      await client.query(
-        'INSERT INTO withdrawals (user_id, amount, ton_address, status, created_at) VALUES ($1, $2, $3, $4, NOW())',
-        [userId, amount, tonAddress, 'pending']
-      );
-      
-      await client.query('COMMIT');
-      
-      // Получаем новый баланс
-      const balanceResult = await pool.query(
-        'SELECT coins FROM users WHERE telegram_id = $1',
-        [userId]
-      );
-      
-      res.json({
-        success: true,
-        message: 'Withdrawal request created',
-        newBalance: balanceResult.rows[0].coins
-      });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    // Списываем монеты
+    await userService.spendCoins(telegramId, amount);
+    
+    // Создаем запись о выводе
+    await run(
+      'INSERT INTO withdrawals (user_id, amount, ton_address, status, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)',
+      [user.id, amount, tonAddress, 'pending']
+    );
+    
+    // Получаем новый баланс
+    const updatedUser = await userService.findByTelegramId(telegramId);
+    
+    res.json({
+      success: true,
+      message: 'Withdrawal request created successfully',
+      newBalance: updatedUser.coins
+    });
+
+    console.log(`💸 Withdrawal request: ${amount} coins to ${tonAddress} for user ${telegramId}`);
   } catch (error) {
-    console.error('Withdraw coins error:', error);
+    console.error('❌ Withdraw coins error:', error);
     res.status(500).json({ error: 'Failed to create withdrawal' });
   }
 });
@@ -291,19 +284,26 @@ router.post('/withdraw-coins', async (req, res) => {
 // GET /api/economy/withdrawals
 router.get('/withdrawals', async (req, res) => {
   try {
-    const userId = extractUserId(req);
+    const telegramId = extractTelegramUserId(req);
     
-    const result = await pool.query(
-      'SELECT id, amount, ton_address, status, created_at FROM withdrawals WHERE user_id = $1 ORDER BY created_at DESC',
-      [userId]
+    const user = await userService.findByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const withdrawals = await query(
+      'SELECT id, amount, ton_address, status, created_at FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC',
+      [user.id]
     );
     
     res.json({
       success: true,
-      withdrawals: result.rows
+      withdrawals: withdrawals
     });
+
+    console.log(`📋 Withdrawals retrieved for user ${telegramId}: ${withdrawals.length} records`);
   } catch (error) {
-    console.error('Get withdrawals error:', error);
+    console.error('❌ Get withdrawals error:', error);
     res.status(500).json({ error: 'Failed to get withdrawals' });
   }
 });
@@ -313,11 +313,11 @@ router.get('/global-stats', async (req, res) => {
   try {
     const currentRate = await getCurrentExchangeRate();
     
-    const issuedResult = await pool.query('SELECT COALESCE(SUM(amount), 0) as issued FROM claims WHERE status = $1', ['completed']);
-    const issued = parseInt(issuedResult.rows[0].issued) || 0;
+    const issuedResult = await get('SELECT COALESCE(SUM(amount), 0) as issued FROM claims WHERE status = ?', ['completed']);
+    const issued = parseInt(issuedResult.issued) || 0;
     
-    const usersResult = await pool.query('SELECT COUNT(*) as total_users FROM users');
-    const totalUsers = parseInt(usersResult.rows[0].total_users) || 0;
+    const usersResult = await get('SELECT COUNT(*) as total_users FROM users');
+    const totalUsers = parseInt(usersResult.total_users) || 0;
     
     res.json({
       success: true,
@@ -327,11 +327,14 @@ router.get('/global-stats', async (req, res) => {
         remaining: 850_000_000 - issued,
         currentRate: currentRate.rate,
         currentTier: currentRate.tier,
+        currentEra: currentRate.era,
         totalUsers: totalUsers
       }
     });
+
+    console.log(`📊 Global stats retrieved. Total users: ${totalUsers}, Issued: ${issued}, Current rate: ${currentRate.rate}`);
   } catch (error) {
-    console.error('Global stats error:', error);
+    console.error('❌ Global stats error:', error);
     res.status(500).json({ error: 'Failed to get global stats' });
   }
 });

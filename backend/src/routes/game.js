@@ -2,8 +2,6 @@ const express = require('express');
 const router = express.Router();
 const userService = require('../services/userService');
 
-// Удаляем старую конфигурацию PostgreSQL - теперь используем SQLite через userService
-
 // Эры системы
 const ERAS = [
   { id: 1, name: 'Каменный век', minPoints: 0, maxPoints: 999999, exchangeRate: 1.0 },
@@ -74,8 +72,8 @@ router.get('/user-stats', async (req, res) => {
 
     const currentEra = getEraByPoints(userStats.stats.totalCoins || 0);
   
-  res.json({
-    success: true,
+    res.json({
+      success: true,
       stats: {
         totalPoints: userStats.stats.totalCoins || 0,
         totalCoins: userStats.coins || 0,
@@ -163,14 +161,8 @@ router.post('/session-end', async (req, res) => {
       return res.status(400).json({ error: 'Session ID and score required' });
     }
 
-    // Обновляем статистику пользователя
-    const user = await userService.findByTelegramId(telegramId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Обновляем счет пользователя
-    await userService.updateScore(telegramId, score);
+    // Обновляем статистику пользователя и начисляем реферальный бонус
+    await userService.endGameSession(telegramId, score);
 
     res.json({
       success: true,
@@ -235,40 +227,6 @@ router.get('/leaderboard', async (req, res) => {
   } catch (error) {
     console.error('Leaderboard error:', error);
     res.status(500).json({ error: 'Failed to get leaderboard' });
-  }
-});
-
-// GET /api/game/session-history
-router.get('/session-history', async (req, res) => {
-  try {
-  const userId = extractUserId(req);
-    const { limit = 20, offset = 0 } = req.query;
-    
-    const result = await pool.query(
-      'SELECT session_id, start_time, end_time, final_score, duration FROM game_sessions WHERE user_id = $1 AND is_active = false ORDER BY start_time DESC LIMIT $2 OFFSET $3',
-      [userId, parseInt(limit), parseInt(offset)]
-    );
-    
-    const sessions = result.rows.map(row => ({
-      sessionId: row.session_id,
-      startTime: row.start_time,
-      endTime: row.end_time,
-      score: row.final_score,
-      duration: row.duration
-    }));
-  
-  res.json({
-    success: true,
-      sessions,
-      pagination: {
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        total: sessions.length
-      }
-    });
-  } catch (error) {
-    console.error('Session history error:', error);
-    res.status(500).json({ error: 'Failed to get session history' });
   }
 });
 

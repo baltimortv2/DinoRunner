@@ -120,29 +120,14 @@ export class SkinShop {
       this.showOfflineMessage('Магазин недоступен в оффлайн режиме');
       return;
     }
-    
     this.renderShop();
-    const modal = document.getElementById('shop-modal');
-    if (modal) modal.classList.remove('hidden');
-    if (this.game && this.game.running && !this.game.paused) {
-      this.game.pause();
-      this.game._wasPausedByMenu = true;
-    }
+    // Используем uiManager для переключения сцены
+    window.uiManager.switchScene('shop'); // Предполагается, что 'shop' будет добавлен в SCENES
   }
 
   closeShop() {
-    const modal = document.getElementById('shop-modal');
-    if (modal) modal.classList.add('hidden');
-
-    // Если магазин был открыт из главного меню, вернемся к нему
-    if (this._openedFromMainMenu) {
-      const mainMenu = document.getElementById('main-menu');
-      if (mainMenu) {
-        mainMenu.classList.remove('hidden');
-        document.getElementById('app')?.classList.add('overlay-open');
-      }
-      this._openedFromMainMenu = false; // Сбрасываем флаг
-    }
+    // Используем uiManager для возврата к предыдущей сцене
+    window.uiManager.goBack();
 
     if (this.game && this.game._wasPausedByMenu && this.game.paused && this.game.running) {
       this.game._wasPausedByMenu = false;
@@ -319,6 +304,9 @@ export class SkinShop {
   async activateSkin(skin) {
     if (!skin.owned) return;
     
+    const updates = {};
+    updates[skin.type] = skin.packName;
+    
     // Если онлайн - отправляем на backend
     if (this.isOnline()) {
       try {
@@ -348,20 +336,20 @@ export class SkinShop {
         this.showOfflineMessage('В оффлайн режиме доступны только стандартные скины');
         return;
       }
-      
-      // Меняем один из источников ассетов
-      const updates = {};
-      updates[skin.type] = skin.packName;
+      // В оффлайне применяем локально
       await this.applySources(updates);
     }
   }
 
   async applySources(partialSources) {
     if (!this.game || !this.game.assetPack) return;
-    const newSources = { ...this.game.assetPack.getCurrentSources(), ...partialSources };
-    await this.game.setSkinSources(newSources);
-    this.saveSkinData();
-    this.renderShop();
+    // Используем setSources, чтобы перезагрузить только нужные ассеты
+    await this.game.assetPack.setSources(partialSources);
+    this.saveSkinData(); // Сохраняем выбор локально
+    this.renderShop(); // Перерисовываем магазин, чтобы обновить UI
+
+    // Генерируем событие, чтобы предпросмотр в главном меню обновился
+    window.dispatchEvent(new CustomEvent('skin-changed'));
   }
 
   updateCoinDisplay() {

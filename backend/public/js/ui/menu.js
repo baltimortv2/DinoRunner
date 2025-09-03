@@ -23,27 +23,18 @@ export function initMenu(game, skinShop) {
   const btnMainMenuBottom = document.getElementById('btn-mainmenu-bottom');
 
   function openMenu() {
-    if (!menu) return;
     if (game.running && !game.paused) {
       game.pause();
       game._wasPausedByMenu = true; // Флаг что пауза была активирована меню
-      updatePauseButton();
     }
-    menu.classList.remove('hidden');
+    window.uiManager.switchScene(window.uiManager.SCENES.MENU);
   }
+  
   function closeMenu() {
-    if (!menu) return;
-    menu.classList.add('hidden');
+    window.uiManager.goBack();
     if (game._wasPausedByMenu && game.paused && game.running) {
       game._wasPausedByMenu = false;
       game.resumeWithCountdown();
-      updatePauseButton();
-    }
-    if (!game.running) {
-      const mainMenu = document.getElementById('main-menu');
-      if (mainMenu) {
-        mainMenu.classList.remove('hidden');
-      }
     }
   }
 
@@ -51,9 +42,10 @@ export function initMenu(game, skinShop) {
     btnMenu.addEventListener('click', openMenu);
     btnMenu.addEventListener('touchend', (e) => { e.preventDefault(); openMenu(); }, { passive: false });
   }
-  if (btnClose) {
-    btnClose.addEventListener('click', closeMenu);
-    btnClose.addEventListener('touchend', (e) => { e.preventDefault(); closeMenu(); }, { passive: false });
+  const btnCloseMenu = document.getElementById('btn-close-menu');
+  if (btnCloseMenu) {
+    btnCloseMenu.addEventListener('click', closeMenu);
+    btnCloseMenu.addEventListener('touchend', (e) => { e.preventDefault(); closeMenu(); }, { passive: false });
   }
 
   function updatePauseButton() {
@@ -149,16 +141,17 @@ export function initMenu(game, skinShop) {
       }
       const rows = response.leaderboard.map((p, i) => `
         <tr>
-          <td class="leaderboard-rank">${i + 1}</td>
-          <td class="leaderboard-username">${(p.userId || '').toString().slice(0,16)}${(p.userId||'').length>16?'…':''}</td>
-          <td class="leaderboard-score">${(p.totalPoints||0).toLocaleString('ru-RU')}</td>
-          <td style="text-align:center;">${p.currentEra || 1}</td>
+          <td class="leaderboard-rank">${p.rank}</td>
+          <td class="leaderboard-username">${p.displayName || `user_${p.userId}`}</td>
+          <td class="leaderboard-score">${(p.points || 0).toLocaleString('ru-RU')}</td>
+          <td class="leaderboard-coins">${(p.coins || 0).toLocaleString('ru-RU')}</td>
+          <td style="text-align:center;">${p.era || 1}</td>
         </tr>
       `).join('');
       lbBody.innerHTML = `
         <table class="leaderboard-table">
           <thead>
-            <tr><th>#</th><th>Игрок</th><th>Очки</th><th style="text-align:center;">Эра</th></tr>
+            <tr><th>#</th><th>Игрок</th><th>Очки</th><th>Монеты</th><th style="text-align:center;">Эра</th></tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
@@ -202,67 +195,109 @@ export function initMenu(game, skinShop) {
     btnLeaderboard.addEventListener('touchend', (e) => { e.preventDefault(); openFromMain(); }, { passive: false });
   }
 
-  // РЕФЕРАЛЫ — переформат под ссылку, затем кнопки
-  const renderReferrals = () => {
-    // Проверяем оффлайн статус
-    if (window.backendIntegration && !window.backendIntegration.isBackendConnected()) {
-      const html = `
+  // РЕФЕРАЛЫ
+  const renderReferrals = async () => {
+    // Проверяем онлайн статус
+    if (!window.apiService || !window.apiService.isAuthenticated()) {
+      const offlineHtml = `
         <div style="text-align:center; padding:20px;">
           <h3 style="color:#ef4444; margin-bottom:16px;">ОФФЛАЙН</h3>
-          <p>Реферальная система недоступна без подключения к серверу</p>
-          <p style="opacity:0.7; font-size:14px;">Подключитесь к интернету для использования этой функции</p>
-        </div>
-      `;
-      openModal('👥 Реферальная система', html);
+          <p>Реферальная система недоступна без авторизации</p>
+        </div>`;
+      openModal('👥 Реферальная система', offlineHtml);
       return;
     }
-    const base = location.origin + location.pathname.replace(/index\.html?$/,'');
-    const userId = (window.apiService && window.apiService.userId) || 'YOU';
-    const link = `${base}?ref=${encodeURIComponent(userId)}`;
-    const html = `
-      <div style="display:grid; gap:14px;">
-        <div class="hud-item" style="justify-content:space-between;">
-          <span>Ваша реферальная ссылка</span>
-          <span style="font-size:12px; opacity:0.8;">Макс. 10 рефералов</span>
-        </div>
-        <div style="display:flex; gap:8px;">
-          <input id="ref-link" value="${link}" readonly style="flex:1; padding:12px; border:1px solid rgba(42,58,74,0.3); border-radius:8px; background:rgba(42,58,74,0.1); color:inherit; font-family:monospace;">
-        </div>
-        <div style="display:flex; gap:8px;">
-          <button id="copy-ref" class="btn btn-primary">Копировать</button>
-          <button id="share-ref" class="btn btn-success">📤 Поделиться</button>
-        </div>
-        <div id="ref-stats" style="opacity:.7; font-size:14px; text-align:center; padding:12px; background:rgba(42,58,74,0.1); border-radius:8px;">
-          Приглашайте друзей и получайте 10% от их обменов!<br>
-          <small>В продакшне здесь будет список рефералов</small>
-        </div>
-        <div style="display:flex; justify-content:flex-end; margin-top:8px;">
-          <button id="ref-back" class="btn">Назад</button>
-        </div>
-      </div>`;
-    openModal('👥 Реферальная система', html, (close) => {
-      const btn = document.getElementById('copy-ref');
-      const shareBtn = document.getElementById('share-ref');
-      const backBtn = document.getElementById('ref-back');
-      const inp = document.getElementById('ref-link');
-      if (btn && inp) {
-        btn.onclick = async () => {
-          try { await navigator.clipboard.writeText(inp.value); btn.textContent = 'Скопировано'; setTimeout(()=>btn.textContent='Копировать',1200);
+
+    // Показываем загрузчик
+    openModal('👥 Реферальная система', '<div class="loader"></div>');
+
+    try {
+      const stats = await window.apiService.makeRequest('/api/referrals/stats');
+      if (!stats.success) {
+        throw new Error(stats.error || 'Failed to load stats');
+      }
+
+      const { referralLink, referrals } = stats;
+
+      let referralsHtml = '<p style="opacity:0.7;">У вас пока нет рефералов. Пригласите друзей!</p>';
+      if (referrals && referrals.length > 0) {
+        referralsHtml = `
+          <table class="leaderboard-table">
+            <thead>
+              <tr><th>Игрок</th><th>Принес очков</th></tr>
+            </thead>
+            <tbody>
+              ${referrals.map(r => `
+                <tr>
+                  <td class="leaderboard-username">${r.first_name || r.username}</td>
+                  <td class="leaderboard-score">${(r.total_earned || 0).toLocaleString('ru-RU')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      }
+
+      const html = `
+        <div style="display:grid; gap:14px;">
+          <div class="hud-item" style="justify-content:space-between;">
+            <span>Ваша реферальная ссылка</span>
+            <span style="font-size:12px; opacity:0.8;">Макс. 10 рефералов</span>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <input id="ref-link" value="${referralLink}" readonly style="flex:1; padding:12px; border:1px solid rgba(42,58,74,0.3); border-radius:8px; background:rgba(42,58,74,0.1); color:inherit; font-family:monospace;">
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button id="copy-ref" class="btn btn-primary">Копировать</button>
+            <button id="share-ref" class="btn btn-success">📤 Поделиться</button>
+          </div>
+          <div id="ref-stats" style="padding:12px; background:rgba(42,58,74,0.1); border-radius:8px;">
+            ${referralsHtml}
+          </div>
+        </div>`;
+        
+      // Обновляем содержимое модального окна без его повторного открытия
+      const modalContent = document.getElementById('modal-content');
+      if(modalContent) {
+          modalContent.innerHTML = html;
+      }
+
+      // Навешиваем обработчики на новые кнопки
+      const btnCopy = document.getElementById('copy-ref');
+      const btnShare = document.getElementById('share-ref');
+      const inputLink = document.getElementById('ref-link');
+
+      if (btnCopy && inputLink) {
+        btnCopy.onclick = async () => {
+          try { 
+            await navigator.clipboard.writeText(inputLink.value); 
+            btnCopy.textContent = 'Скопировано'; 
+            setTimeout(() => { btnCopy.textContent = 'Копировать'; }, 1200);
             if (window.telegramApp?.isTelegram) window.telegramApp.hapticNotification('success');
-          } catch {}
+          } catch(e) { console.error('Failed to copy', e); }
         };
       }
-      if (shareBtn && inp) {
-        shareBtn.onclick = () => {
-          if (window.telegramApp?.isTelegram) window.telegramApp.shareReferralLink(inp.value);
-          else if (navigator.share) navigator.share({ title:'Dino Runner - Реферал', text:'Присоединяйся!', url: inp.value });
-          else { navigator.clipboard.writeText(inp.value); alert('Ссылка скопирована'); }
+
+      if (btnShare && inputLink) {
+        btnShare.onclick = () => {
+            const shareText = `🎮 Присоединяйся ко мне в Dino Runner! Моя ссылка: ${inputLink.value}`;
+            if (window.telegramApp?.isTelegram && navigator.share) {
+                navigator.share({ title: 'Dino Runner', text: shareText });
+            } else {
+                navigator.clipboard.writeText(shareText);
+                alert('Ссылка скопирована в буфер обмена!');
+            }
         };
       }
-      if (backBtn) {
-        backBtn.onclick = close;
+
+    } catch (error) {
+      console.error('Referral error', error);
+      const errorHtml = `<p style="margin:12px 0; color: var(--error-color);">Ошибка загрузки данных. Попробуйте позже.</p>`;
+      const modalContent = document.getElementById('modal-content');
+      if(modalContent) {
+          modalContent.innerHTML = errorHtml;
       }
-    });
+    }
   };
   btnReferrals?.addEventListener('click', renderReferrals);
   btnReferrals?.addEventListener('touchend', (e) => { e.preventDefault(); renderReferrals(); }, { passive: false });
@@ -414,14 +449,37 @@ export function initMenu(game, skinShop) {
         if (game.coins < n) { alert(`Недостаточно монет. Нужно: ${n}, у вас: ${game.coins}`); return; }
         try {
           if (window.apiService && window.apiService.isAuthenticated()) {
-            const result = await window.apiService.withdrawCoins(n, addr);
+            const sendBtn = document.getElementById('wd-send');
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Обработка...';
+
+            const result = await window.apiService.makeRequest('/api/withdrawals/request', {
+              method: 'POST',
+              body: { amount: n, tonAddress: addr }
+            });
+
             if (result.success) {
-              game.coins = result.newStats.totalCoins;
+              game.coins = result.newBalance;
               const cEl = document.getElementById('coins'); if (cEl) cEl.textContent = String(game.coins);
               const sc = document.getElementById('shop-coins'); if (sc) sc.textContent = String(game.coins);
+              const mmsCoins = document.getElementById('mms-coins'); if (mmsCoins) mmsCoins.textContent = String(game.coins);
+              
               close();
               if (window.telegramApp?.isTelegram) window.telegramApp.hapticNotification('success');
-              setTimeout(() => alert('Заявка на вывод отправлена.'), 0);
+              setTimeout(() => {
+                openModal('✅ Успешно', `
+                  <div style="text-align:center; padding:20px;">
+                    <h3 style="color:#10b981; margin-bottom:16px;">Заявка на вывод создана!</h3>
+                    <p><strong>Сумма:</strong> ${n.toLocaleString()} монет</p>
+                    <p><strong>Адрес:</strong> <code style="background:rgba(0,0,0,0.1); padding:2px 6px; border-radius:4px;">${addr}</code></p>
+                    <p><strong>Статус:</strong> В обработке</p>
+                    <p><strong>Новый баланс:</strong> ${game.coins.toLocaleString()} монет</p>
+                    <p style="font-size:14px; opacity:0.8; margin-top:16px;">
+                      Вывод будет обработан в течение 24 часов
+                    </p>
+                  </div>
+                `);
+              }, 100);
             } else {
               alert(`Ошибка вывода: ${result.error || 'Неизвестная ошибка'}`);
             }
@@ -432,6 +490,12 @@ export function initMenu(game, skinShop) {
         } catch (error) {
           console.error('Withdrawal error:', error);
           alert(`Ошибка вывода: ${error.message || 'Проблема с подключением'}`);
+        } finally {
+          const sendBtn = document.getElementById('wd-send');
+          if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Отправить';
+          }
         }
       });
     });

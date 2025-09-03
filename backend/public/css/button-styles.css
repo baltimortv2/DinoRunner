@@ -1,426 +1,107 @@
-/* Улучшенные стили кнопок */
+/* Общие стили для кнопок */
 .btn {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  padding: 12px 20px;
+  border-radius: 12px;
   border: none;
-  outline: none;
+  font-size: 16px;
+  font-weight: 600;
   cursor: pointer;
-  font-family: inherit;
-  font-size: inherit;
-  font-weight: inherit;
-  text-decoration: none;
+  transition: all 0.2s ease-in-out;
+  -webkit-tap-highlight-color: transparent; /* Убираем синюю обводку на мобильных */
+  user-select: none; /* Запрещаем выделение текста на кнопке */
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px 24px;
-  border-radius: 12px;
-  transition: all 0.2s ease;
-  position: relative;
-  overflow: hidden;
-  user-select: none;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
+  min-height: 48px; /* Минимальная высота для удобного нажатия */
+  text-decoration: none;
 }
 
-/* Убираем стандартную обводку при фокусе */
-.btn:focus {
-  outline: none !important;
-  box-shadow: none !important;
-  border: none !important;
+/* Эффект при наведении */
+.btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
 }
 
-/* Убираем стандартную обводку при активном состоянии */
+/* Эффект при нажатии */
 .btn:active {
-  outline: none !important;
-  box-shadow: none !important;
-  border: none !important;
+  transform: translateY(1px) scale(0.98);
+  filter: brightness(0.95);
+  transition: transform 0.1s ease;
 }
 
-/* Убираем обводку при фокусе на мобильных устройствах */
-.btn:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
-  border: none !important;
-}
-
-/* Убираем стандартные стили браузера для всех состояний */
-.btn {
-  -webkit-tap-highlight-color: transparent !important;
-  -webkit-touch-callout: none !important;
-  -webkit-user-select: none !important;
-  -khtml-user-select: none !important;
-  -moz-user-select: none !important;
-  -ms-user-select: none !important;
-  user-select: none !important;
-}
-
-/* Основные цвета кнопок */
+/* Основная кнопка (Начать игру, Купить) */
 .btn-primary {
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  color: white;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  background-color: var(--tg-button-color, #2481cc);
+  color: var(--tg-button-text-color, #ffffff);
+  box-shadow: 0 4px 15px -5px rgba(36, 129, 204, 0.6);
 }
-
 .btn-primary:hover {
-  background: linear-gradient(135deg, #60a5fa, #3b82f6);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 6px burdensome -5px rgba(36, 129, 204, 0.8);
 }
 
-.btn-primary:active {
-  background: linear-gradient(135deg, #1d4ed8, #1e40af);
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-}
 
-.btn-success {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-}
-
-.btn-success:hover {
-  background: linear-gradient(135deg, #34d399, #10b981);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
-}
-
-.btn-success:active {
-  background: linear-gradient(135deg, #059669, #047857);
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-}
-
-.btn-danger {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: white;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
-}
-
-.btn-danger:hover {
-  background: linear-gradient(135deg, #f87171, #ef4444);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
-}
-
-.btn-danger:active {
-  background: linear-gradient(135deg, #dc2626, #b91c1c);
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
-}
-
+/* Второстепенная кнопка (Закрыть, Назад) */
 .btn-secondary {
-  background: linear-gradient(135deg, #6b7280, #4b5563);
-  color: white;
-  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
+  background-color: var(--tg-secondary-bg-color, #e1e5e8);
+  color: var(--tg-text-color, #000000);
 }
 
-.btn-secondary:hover {
-  background: linear-gradient(135deg, #9ca3af, #6b7280);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(107, 114, 128, 0.4);
+/* Кнопка успеха (Обменять) */
+.btn-success {
+  background-color: #10b981;
+  color: #ffffff;
+  box-shadow: 0 4px 15px -5px rgba(16, 185, 129, 0.6);
 }
 
-.btn-secondary:active {
-  background: linear-gradient(135deg, #4b5563, #374151);
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(107, 114, 128, 0.3);
+/* Кнопка опасности (Магазин) */
+.btn-danger {
+  background-color: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 4px 15px -5px rgba(239, 68, 68, 0.6);
 }
 
-/* Специальные стили для кнопки "Начать игру" */
-.btn-start {
-  font-size: 18px;
-  font-weight: 600;
-  padding: 16px 32px;
-  min-height: 60px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: white;
-  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.btn-start:hover {
-  background: linear-gradient(135deg, #fbbf24, #f59e0b);
-  transform: translateY(-3px);
-  box-shadow: 0 8px 25px rgba(245, 158, 11, 0.5);
-}
-
-.btn-start:active {
-  background: linear-gradient(135deg, #d97706, #b45309);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4);
+/* Отключенная кнопка */
+.btn:disabled {
+  background-color: #9ca3af;
+  color: #e5e7eb;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+  box-shadow: none;
 }
 
 /* Стили для кнопок в главном меню */
+.main-menu-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+}
+
 .main-menu-btn {
-  font-size: 16px;
-  font-weight: 500;
-  padding: 14px 20px;
-  min-height: 50px;
-  border-radius: 14px;
-  flex: 1;
-  min-width: 120px;
-  background: linear-gradient(135deg, #6b7280, #4b5563);
-  color: white;
-  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
+  width: 100%; /* Растягиваем кнопки на всю ширину ячейки */
 }
 
-.main-menu-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(107, 114, 128, 0.4);
+/* Кнопки в нижнем баре */
+.bottom-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 12px;
+    background: rgba(18, 26, 33, 0.8);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(42,58,74,0.5);
+    z-index: 100;
 }
-
-.main-menu-btn:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(107, 114, 128, 0.3);
+.bottom-controls-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
 }
-
-/* Стили для кнопок в нижней панели */
 .btn-large {
-  font-size: 16px;
-  font-weight: 500;
-  padding: 16px 24px;
-  min-height: 56px;
-  border-radius: 16px;
-  flex: 1;
-  background: linear-gradient(135deg, #6b7280, #4b5563);
-  color: white;
-  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
-}
-
-.btn-large:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(107, 114, 128, 0.4);
-}
-
-.btn-large:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(107, 114, 128, 0.3);
-}
-
-/* Специальные стили для кнопок в главном меню */
-.main-menu-btn.btn-success {
-  background: linear-gradient(135deg, #10b981, #059669);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-}
-
-.main-menu-btn.btn-success:hover {
-  background: linear-gradient(135deg, #34d399, #10b981);
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
-}
-
-.main-menu-btn.btn-success:active {
-  background: linear-gradient(135deg, #059669, #047857);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-}
-
-.main-menu-btn.btn-danger {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
-}
-
-.main-menu-btn.btn-danger:hover {
-  background: linear-gradient(135deg, #f87171, #ef4444);
-  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
-}
-
-.main-menu-btn.btn-danger:active {
-  background: linear-gradient(135deg, #dc2626, #b91c1c);
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
-}
-
-.main-menu-btn.btn-primary {
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-.main-menu-btn.btn-primary:hover {
-  background: linear-gradient(135deg, #60a5fa, #3b82f6);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
-}
-
-.main-menu-btn.btn-primary:active {
-  background: linear-gradient(135deg, #1d4ed8, #1e40af);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-}
-
-/* Стили для кнопок в нижней панели с цветами */
-.btn-large.btn-danger {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
-}
-
-.btn-large.btn-danger:hover {
-  background: linear-gradient(135deg, #f87171, #ef4444);
-  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
-}
-
-.btn-large.btn-danger:active {
-  background: linear-gradient(135deg, #dc2626, #b91c1c);
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
-}
-
-.btn-large.btn-primary {
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-.btn-large.btn-primary:hover {
-  background: linear-gradient(135deg, #60a5fa, #3b82f6);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
-}
-
-.btn-large.btn-primary:active {
-  background: linear-gradient(135deg, #1d4ed8, #1e40af);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-}
-
-.btn-large.btn-secondary {
-  background: linear-gradient(135deg, #6b7280, #4b5563);
-  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
-}
-
-.btn-large.btn-secondary:hover {
-  background: linear-gradient(135deg, #9ca3af, #6b7280);
-  box-shadow: 0 6px 16px rgba(107, 114, 128, 0.4);
-}
-
-.btn-large.btn-secondary:active {
-  background: linear-gradient(135deg, #4b5563, #374151);
-  box-shadow: 0 2px 8px rgba(107, 114, 128, 0.3);
-}
-
-/* Анимация нажатия */
-.btn:active {
-  transform: scale(0.98);
-}
-
-/* Состояние disabled */
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-/* Адаптивность для мобильных устройств */
-@media (max-width: 768px) {
-  .btn {
-    padding: 10px 20px;
-    font-size: 14px;
-  }
-  
-  .btn-start {
-    font-size: 16px;
-    padding: 14px 28px;
-    min-height: 56px;
-  }
-  
-  .main-menu-btn {
-    font-size: 14px;
-    padding: 12px 16px;
-    min-height: 44px;
-  }
-  
-  .btn-large {
-    font-size: 14px;
-    padding: 14px 20px;
-    min-height: 48px;
-  }
-}
-
-/* Специальные эффекты для кнопок */
-.btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-  transition: left 0.5s;
-}
-
-.btn:hover::before {
-  left: 100%;
-}
-
-/* Стили для кнопок в меню настроек */
-.menu-btn {
-  background: linear-gradient(135deg, #6b7280, #4b5563);
-  color: white;
-  border: none;
-  outline: none;
-  cursor: pointer;
-  padding: 12px 16px;
-  border-radius: 12px;
+  padding: 14px;
   font-size: 14px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-}
-
-.menu-btn:hover {
-  background: linear-gradient(135deg, #9ca3af, #6b7280);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(107, 114, 128, 0.4);
-}
-
-.menu-btn:active {
-  background: linear-gradient(135deg, #4b5563, #374151);
-  transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(107, 114, 128, 0.3);
-}
-
-.menu-btn:focus {
-  outline: none !important;
-  box-shadow: none !important;
-  border: none !important;
-}
-
-.menu-btn-exit {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
-}
-
-.menu-btn-exit:hover {
-  background: linear-gradient(135deg, #f87171, #ef4444);
-  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
-}
-
-.menu-btn-exit:active {
-  background: linear-gradient(135deg, #dc2626, #b91c1c);
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
-}
-
-/* Стили для кнопок в магазине */
-.btn-restart {
-  background: linear-gradient(135deg, #10b981, #059669);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-}
-
-.btn-restart:hover {
-  background: linear-gradient(135deg, #34d399, #10b981);
-  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
-}
-
-.btn-restart:active {
-  background: linear-gradient(135deg, #059669, #047857);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-}
-
-/* Убираем стандартные стили браузера */
-.btn::-moz-focus-inner {
-  border: 0;
-}
-
-.btn:-moz-focusring {
-  outline: none;
 }

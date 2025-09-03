@@ -2,6 +2,12 @@ import { Game } from './game/engine.js';
 import { initHUD } from './ui/hud.js';
 import { initMenu } from './ui/menu.js';
 import { SkinShop } from './ui/shop.js';
+import { initializeTelegram } from './telegram.js';
+import { apiService } from './services/api.js';
+import { BackendIntegration } from './services/backendIntegration.js';
+import { ConnectionMonitor } from './services/connectionMonitor.js';
+import { TelegramAuthService } from './services/telegramAuth.js';
+import { tonWalletService } from './services/tonWallet.js';
 // подключаем через index.html обычными тегами, чтобы не было MIME ошибок
 
 function fitCanvasToContainer(canvas) {
@@ -112,9 +118,30 @@ window.addEventListener('load', async () => {
     console.warn('⚠️ API service not available');
   }
 
+  // Инициализация сервисов
+  window.tonWalletService = tonWalletService;
+
   // Инициализация мониторинга соединения
   window.connectionMonitor = new ConnectionMonitor();
   console.log('🔌 Connection Monitor инициализирован');
+  
+  // Добавляем оффлайн индикатор в HUD
+  const offlineIndicator = document.createElement('div');
+  offlineIndicator.className = 'offline-indicator';
+  offlineIndicator.textContent = 'OFFLINE';
+  offlineIndicator.style.display = 'none';
+  document.body.appendChild(offlineIndicator);
+
+  // Слушаем изменения статуса соединения
+  window.connectionMonitor.onConnectionChange = (isOnline) => {
+    if (isOnline) {
+      offlineIndicator.style.display = 'none';
+      document.body.classList.remove('offline-mode');
+    } else {
+      offlineIndicator.style.display = 'block';
+      document.body.classList.add('offline-mode');
+    }
+  };
   
   // Принудительная проверка соединения через 2 секунды
   setTimeout(() => {

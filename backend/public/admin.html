@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ панель - Dino Runner</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: #2481cc;
+            color: white;
+            padding: 1rem 0;
+            margin-bottom: 2rem;
+            border-radius: 8px;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            background: #2481cc;
+            color: white;
+            border-color: #2481cc;
+        }
+
+        .content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status.completed {
+            background: #d1edff;
+            color: #0c5460;
+        }
+
+        .status.rejected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .btn-approve {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-reject {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn:hover {
+            opacity: 0.8;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #2481cc;
+        }
+
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔧 Админ панель - Dino Runner</h1>
+        </header>
+
+        <div class="tabs">
+            <div class="tab active" data-tab="withdrawals">Выводы</div>
+            <div class="tab" data-tab="stats">Статистика</div>
+        </div>
+
+        <div id="auth-section" class="content">
+            <h2>Авторизация</h2>
+            <p>Для доступа к админ панели войдите через Telegram как администратор.</p>
+            <button id="login-btn" class="btn btn-approve">Войти через Telegram</button>
+        </div>
+
+        <div id="withdrawals-tab" class="content hidden">
+            <h2>🏦 Управление выводами</h2>
+            <div id="withdrawals-content">
+                <div class="loading">Загрузка...</div>
+            </div>
+        </div>
+
+        <div id="stats-tab" class="content hidden">
+            <h2>📊 Статистика выводов</h2>
+            <div id="stats-content">
+                <div class="loading">Загрузка...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        class AdminPanel {
+            constructor() {
+                this.token = localStorage.getItem('admin_token');
+                this.currentTab = 'withdrawals';
+                this.baseUrl = window.location.origin;
+                
+                this.initializeEventListeners();
+                this.checkAuth();
+            }
+
+            initializeEventListeners() {
+                // Переключение табов
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.addEventListener('click', () => {
+                        const tabName = tab.dataset.tab;
+                        this.switchTab(tabName);
+                    });
+                });
+
+                // Кнопка авторизации
+                document.getElementById('login-btn').addEventListener('click', () => {
+                    this.authenticateWithTelegram();
+                });
+            }
+
+            async checkAuth() {
+                if (!this.token) {
+                    this.showAuthSection();
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`${this.baseUrl}/api/withdrawals/stats`, {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        this.showAdminPanel();
+                        this.loadData();
+                    } else {
+                        this.showAuthSection();
+                        localStorage.removeItem('admin_token');
+                        this.token = null;
+                    }
+                } catch (error) {
+                    console.error('Auth check failed:', error);
+                    this.showAuthSection();
+                }
+            }
+
+            async authenticateWithTelegram() {
+                try {
+                    // Здесь должна быть интеграция с Telegram аутентификацией
+                    // Пока что используем тестовый токен для демонстрации
+                    this.token = 'admin-test-token';
+                    localStorage.setItem('admin_token', this.token);
+                    
+                    this.showAdminPanel();
+                    this.loadData();
+                } catch (error) {
+                    console.error('Telegram auth failed:', error);
+                    alert('Ошибка авторизации');
+                }
+            }
+
+            showAuthSection() {
+                document.getElementById('auth-section').classList.remove('hidden');
+                document.getElementById('withdrawals-tab').classList.add('hidden');
+                document.getElementById('stats-tab').classList.add('hidden');
+            }
+
+            showAdminPanel() {
+                document.getElementById('auth-section').classList.add('hidden');
+                this.switchTab(this.currentTab);
+            }
+
+            switchTab(tabName) {
+                this.currentTab = tabName;
+                
+                // Обновляем активный таб
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.classList.toggle('active', tab.dataset.tab === tabName);
+                });
+
+                // Показываем соответствующий контент
+                document.querySelectorAll('[id$="-tab"]').forEach(content => {
+                    content.classList.add('hidden');
+                });
+                document.getElementById(`${tabName}-tab`).classList.remove('hidden');
+
+                // Загружаем данные для текущего таба
+                if (tabName === 'withdrawals') {
+                    this.loadWithdrawals();
+                } else if (tabName === 'stats') {
+                    this.loadStats();
+                }
+            }
+
+            async loadData() {
+                if (this.currentTab === 'withdrawals') {
+                    await this.loadWithdrawals();
+                } else if (this.currentTab === 'stats') {
+                    await this.loadStats();
+                }
+            }
+
+            async loadWithdrawals() {
+                try {
+                    const response = await fetch(`${this.baseUrl}/api/withdrawals/stats`, {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`
+                        }
+                    });
+
+                    if (!response.ok) throw new Error('Failed to load withdrawals');
+                    
+                    const data = await response.json();
+                    this.renderWithdrawals(data.stats);
+                } catch (error) {
+                    console.error('Failed to load withdrawals:', error);
+                    document.getElementById('withdrawals-content').innerHTML = 
+                        '<div class="error">Ошибка загрузки данных о выводах</div>';
+                }
+            }
+
+            async loadStats() {
+                try {
+                    const response = await fetch(`${this.baseUrl}/api/withdrawals/stats`, {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`
+                        }
+                    });
+
+                    if (!response.ok) throw new Error('Failed to load stats');
+                    
+                    const data = await response.json();
+                    this.renderStats(data.stats);
+                } catch (error) {
+                    console.error('Failed to load stats:', error);
+                    document.getElementById('stats-content').innerHTML = 
+                        '<div class="error">Ошибка загрузки статистики</div>';
+                }
+            }
+
+            renderWithdrawals(stats) {
+                const html = `
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="stat-value">${stats.totalWithdrawals}</div>
+                            <div class="stat-label">Всего заявок</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${stats.pendingAmount.toLocaleString()}</div>
+                            <div class="stat-label">Ожидают обработки</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${stats.totalAmount.toLocaleString()}</div>
+                            <div class="stat-label">Выведено монет</div>
+                        </div>
+                    </div>
+
+                    <h3>Последние заявки на вывод</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Пользователь</th>
+                                <th>Сумма</th>
+                                <th>TON адрес</th>
+                                <th>Статус</th>
+                                <th>Дата</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${stats.recentWithdrawals.map(withdrawal => `
+                                <tr>
+                                    <td>${withdrawal.username || withdrawal.first_name || 'Неизвестно'}</td>
+                                    <td>${withdrawal.amount.toLocaleString()} монет</td>
+                                    <td><code>${withdrawal.ton_address.substring(0, 10)}...</code></td>
+                                    <td><span class="status ${withdrawal.status}">${this.getStatusText(withdrawal.status)}</span></td>
+                                    <td>${new Date(withdrawal.created_at).toLocaleDateString()}</td>
+                                    <td>
+                                        ${withdrawal.status === 'pending' ? `
+                                            <button class="btn btn-approve" onclick="adminPanel.processWithdrawal(${withdrawal.id}, 'approve')">
+                                                ✅ Одобрить
+                                            </button>
+                                            <button class="btn btn-reject" onclick="adminPanel.processWithdrawal(${withdrawal.id}, 'reject')">
+                                                ❌ Отклонить
+                                            </button>
+                                        ` : '-'}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+                document.getElementById('withdrawals-content').innerHTML = html;
+            }
+
+            renderStats(stats) {
+                const html = `
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="stat-value">${stats.totalWithdrawals}</div>
+                            <div class="stat-label">Всего заявок</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${stats.totalAmount.toLocaleString()}</div>
+                            <div class="stat-label">Выведено монет</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${stats.pendingAmount.toLocaleString()}</div>
+                            <div class="stat-label">В ожидании</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${(stats.recentWithdrawals.filter(w => w.status === 'rejected').length)}</div>
+                            <div class="stat-label">Отклонено</div>
+                        </div>
+                    </div>
+
+                    <h3>Подробная статистика</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Метрика</th>
+                                <th>Значение</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Общее количество заявок</td>
+                                <td>${stats.totalWithdrawals}</td>
+                            </tr>
+                            <tr>
+                                <td>Общая сумма выведенных монет</td>
+                                <td>${stats.totalAmount.toLocaleString()} монет</td>
+                            </tr>
+                            <tr>
+                                <td>Сумма ожидающих обработки</td>
+                                <td>${stats.pendingAmount.toLocaleString()} монет</td>
+                            </tr>
+                            <tr>
+                                <td>Средняя сумма вывода</td>
+                                <td>${stats.totalWithdrawals > 0 ? Math.round(stats.totalAmount / stats.totalWithdrawals).toLocaleString() : 0} монет</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                `;
+
+                document.getElementById('stats-content').innerHTML = html;
+            }
+
+            async processWithdrawal(withdrawalId, action) {
+                if (!confirm(`Вы уверены, что хотите ${action === 'approve' ? 'одобрить' : 'отклонить'} этот вывод?`)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`${this.baseUrl}/api/withdrawals/process`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${this.token}`
+                        },
+                        body: JSON.stringify({
+                            withdrawalId,
+                            action,
+                            txHash: action === 'approve' ? prompt('Введите TX hash (опционально):') : null
+                        })
+                    });
+
+                    if (!response.ok) throw new Error('Failed to process withdrawal');
+                    
+                    alert(`Вывод успешно ${action === 'approve' ? 'одобрен' : 'отклонен'}`);
+                    this.loadWithdrawals(); // Перезагружаем список
+                } catch (error) {
+                    console.error('Failed to process withdrawal:', error);
+                    alert('Ошибка обработки вывода');
+                }
+            }
+
+            getStatusText(status) {
+                const statusMap = {
+                    'pending': 'Ожидает',
+                    'completed': 'Завершен',
+                    'rejected': 'Отклонен'
+                };
+                return statusMap[status] || status;
+            }
+        }
+
+        // Инициализация админ панели
+        const adminPanel = new AdminPanel();
+    </script>
+</body>
+</html>

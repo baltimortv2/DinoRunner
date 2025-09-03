@@ -4,314 +4,223 @@
  * Автоматически переключает между онлайн и оффлайн режимами
  */
 
-class ConnectionMonitor {
-  constructor() {
-    this.isOnline = false; // Начинаем с оффлайн статуса
-    this.wasOffline = false; // Флаг для отслеживания потери соединения
-    this.lastCheck = Date.now();
-    this.checkInterval = 30000; // Проверка каждые 30 секунд
-    this.retryAttempts = 0;
-    this.maxRetries = 3;
+export class ConnectionMonitor {
+  constructor(apiService) {
+    this.apiService = apiService; // Используем переданный сервис
     this.healthCheckUrl = '/api/health';
-    this.listeners = new Set();
-
-    console.log('🔌 ConnectionMonitor: Constructor called');
-    this.init();
-  }
-
-  init() {
-    console.log('🔌 ConnectionMonitor: Initializing...');
+    this.isOnline = true;
+    this.lastCheck = Date.now();
+    this.checkInterval = 5000; // Проверяем каждые 5 секунд
+    this.offlineThreshold = 10000; // Считаем оффлайн после 10 секунд без ответа
+    this.retryInterval = null;
+    this.offlineBanner = null;
+    this.connectionBanner = null;
+    this.gamePaused = false;
+    this.lastScore = 0;
     
-    // Начинаем мониторинг
     this.startMonitoring();
-    
-    // Слушаем события браузера
-    window.addEventListener('online', () => this.handleBrowserOnline());
-    window.addEventListener('offline', () => this.handleBrowserOffline());
-    
-    // Слушаем события видимости страницы
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && Date.now() - this.lastCheck > 10000) {
-        this.checkConnection();
-      }
-    });
-    
-    // Дополнительная проверка при загрузке страницы
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => this.checkConnection(), 1000);
-      });
-    } else {
-      // DOM уже загружен
-      setTimeout(() => this.checkConnection(), 1000);
-    }
   }
 
   startMonitoring() {
-    console.log('🚀 Starting connection monitoring...');
-    
-    // Первая проверка
-    this.checkConnection();
-    
-    // Устанавливаем интервал проверки
-    setInterval(() => {
+    this.retryInterval = setInterval(() => {
       this.checkConnection();
     }, this.checkInterval);
-    
-    // Дополнительная проверка при фокусе на странице
-    window.addEventListener('focus', () => {
-      if (Date.now() - this.lastCheck > 15000) {
-        this.checkConnection();
-      }
-    });
+  }
+
+  stopMonitoring() {
+    if (this.retryInterval) {
+      clearInterval(this.retryInterval);
+      this.retryInterval = null;
+    }
   }
 
   async checkConnection() {
     try {
-      
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      const response = await fetch(this.healthCheckUrl, {
-        method: 'GET',
-        cache: 'no-cache',
-        signal: controller.signal
-      });
-      
+      const isOk = await this.apiService.healthCheck(controller.signal);
       clearTimeout(timeoutId);
       
-      if (response.ok) {
-        console.log('✅ Backend health check successful');
-        this.setOnlineStatus(true);
+      if (isOk) {
+        this.handleConnectionRestored();
       } else {
-        console.warn('⚠️ Backend health check failed with status:', response.status);
-        this.setOnlineStatus(false);
+        this.handleConnectionLost();
       }
     } catch (error) {
-      if (error.name === 'AbortError') {
-        console.warn('⏰ Connection check timeout');
-      } else {
-        console.warn('🔴 Connection check failed:', error.message);
-      }
-      this.setOnlineStatus(false);
+      this.handleConnectionLost();
     }
   }
 
-  setOnlineStatus(online) {
-    const wasOnline = this.isOnline;
-    this.isOnline = online;
-
-    if (online) {
-      this.retryAttempts = 0;
-      this.lastCheck = Date.now();
-
-      if (!wasOnline) {
-        console.log('🟢 Backend connection restored!');
-        this.wasOffline = true; // Устанавливаем флаг для показа баннера восстановления
-        this.notifyListeners('online');
-        this.syncData();
-      }
-    } else {
-      if (wasOnline) {
-        console.log('🔴 Backend connection lost!');
-        this.wasOffline = true; // Устанавливаем флаг потери соединения
-        this.notifyListeners('offline');
-      }
-    }
-
-    // Обновляем UI
-    this.updateUI();
-  }
-
-  async syncData() {
-    if (!this.isOnline) return;
-    
-    try {
-      console.log('🔄 Syncing data with backend...');
-      
-      // Синхронизируем статистику пользователя
-      if (window.apiService) {
-        await window.apiService.getUserStats();
-      }
-      
-      // Синхронизируем активные скины
-      if (window.shopManager) {
-        await window.shopManager.loadSkinData();
-      }
-      
-      console.log('✅ Data sync completed');
-    } catch (error) {
-      console.error('❌ Data sync failed:', error);
-    }
-  }
-
-  handleBrowserOnline() {
-    console.log('🌐 Browser connection restored');
-    // Проверяем backend соединение
-    setTimeout(() => this.checkConnection(), 1000);
-  }
-
-  handleBrowserOffline() {
-    console.log('🌐 Browser connection lost');
-    this.setOnlineStatus(false);
-  }
-
-  updateUI() {
-    // Обновляем индикатор статуса - показываем только когда оффлайн
-    const statusIndicator = document.getElementById('connection-status');
-    if (statusIndicator) {
-      if (this.isOnline) {
-        // Онлайн - скрываем индикатор
-        statusIndicator.style.display = 'none';
-      } else {
-        // Оффлайн - показываем индикатор
-        statusIndicator.style.display = 'block';
-        statusIndicator.className = 'connection-status offline';
-        statusIndicator.textContent = '🔴 Оффлайн';
-        statusIndicator.title = 'Нет соединения с сервером';
-      }
-    }
-
-    // Обновляем основной контейнер
-    const mainContainer = document.querySelector('.game-container');
-    if (mainContainer) {
-      mainContainer.classList.toggle('offline-mode', !this.isOnline);
-    }
-
-    // Показываем/скрываем баннеры
-    this.toggleOfflineBanner();
-    this.toggleOnlineBanner();
-  }
-
-  toggleOfflineBanner() {
-    let banner = document.getElementById('offline-banner');
-    
-    if (!this.isOnline && !banner) {
-      // Создаем баннер
-      console.log('🔴 Creating offline banner');
-      banner = document.createElement('div');
-      banner.id = 'offline-banner';
-      banner.className = 'offline-banner';
-      banner.innerHTML = `
-        <div class="offline-content">
-          <div class="offline-icon">🔴</div>
-          <div class="offline-text">
-            <h3>Оффлайн режим</h3>
-            <p>Нет соединения с сервером. Некоторые функции недоступны.</p>
-            <small>Игра продолжит работать, но прогресс не сохранится</small>
-          </div>
-        </div>
-      `;
-      
-      // Добавляем обработчик клика для быстрого закрытия
-      banner.addEventListener('click', () => {
-        console.log('👆 Offline banner clicked, removing...');
-        banner.remove();
-      });
-      
-      document.body.appendChild(banner);
-      
-      // Автоматически убираем баннер через 3 секунды
-      setTimeout(() => {
-        if (banner && banner.parentNode) {
-          console.log('⏰ Auto-removing offline banner after 3 seconds');
-          banner.remove();
-        }
-      }, 3000);
-      
-    } else if (this.isOnline && banner) {
-      // Удаляем баннер при восстановлении соединения
-      console.log('🟢 Removing offline banner - connection restored');
-      banner.remove();
-    }
-  }
-
-  toggleOnlineBanner() {
-    // Показываем баннер восстановления только при восстановлении соединения
-    if (this.isOnline && this.wasOffline) {
-      let banner = document.getElementById('online-banner');
-
-      if (!banner) {
-        console.log('🟢 Creating online restoration banner');
-        banner = document.createElement('div');
-        banner.id = 'online-banner';
-        banner.className = 'online-banner';
-        banner.innerHTML = `
-          <div class="online-content">
-            <div class="online-icon">🟢</div>
-            <div class="online-text">
-              <h3>Соединение восстановлено</h3>
-              <p>Связь с сервером восстановлена. Все функции доступны.</p>
-            </div>
-          </div>
-        `;
-
-        // Добавляем обработчик клика для быстрого закрытия
-        banner.addEventListener('click', () => {
-          console.log('👆 Online banner clicked, removing...');
-          banner.remove();
-        });
-
-        document.body.appendChild(banner);
-
-        // Автоматически убираем баннер через 3 секунды
-        setTimeout(() => {
-          if (banner && banner.parentNode) {
-            console.log('⏰ Auto-removing online banner after 3 seconds');
-            banner.remove();
-          }
-        }, 3000);
-      }
-    }
-
-    // Сбрасываем флаг wasOffline после показа баннера
+  handleConnectionLost() {
     if (this.isOnline) {
-      this.wasOffline = false;
+      console.log('🔴 Connection lost');
+      this.isOnline = false;
+      this.lastCheck = Date.now();
+      
+      // Показываем оффлайн баннер
+      this.showOfflineBanner();
+      
+      // Если игра идет, ставим на паузу
+      this.pauseGameIfRunning();
+      
+      // Синхронизируем данные
+      this.syncDataOnOffline();
     }
   }
 
-  addListener(event, callback) {
-    this.listeners.add({ event, callback });
-  }
-
-  removeListener(event, callback) {
-    for (const listener of this.listeners) {
-      if (listener.event === event && listener.callback === callback) {
-        this.listeners.delete(listener);
-        break;
-      }
+  handleConnectionRestored() {
+    if (!this.isOnline) {
+      console.log('🟢 Connection restored');
+      this.isOnline = true;
+      
+      // Скрываем оффлайн баннер
+      this.hideOfflineBanner();
+      
+      // Показываем баннер восстановления
+      this.showConnectionRestoredBanner();
+      
+      // Синхронизируем данные с сервером
+      this.syncDataOnRestore();
     }
   }
 
-  notifyListeners(event) {
-    for (const listener of this.listeners) {
-      if (listener.event === event) {
-        try {
-          listener.callback();
-        } catch (error) {
-          console.error('Listener error:', error);
+  showOfflineBanner() {
+    if (this.offlineBanner) return;
+    
+    this.offlineBanner = document.createElement('div');
+    this.offlineBanner.className = 'offline-banner';
+    this.offlineBanner.innerHTML = `
+      <div class="offline-content">
+        <span class="offline-icon">📡</span>
+        <span class="offline-text">OFFLINE</span>
+      </div>
+    `;
+    
+    document.body.appendChild(this.offlineBanner);
+    
+    // Анимация появления
+    setTimeout(() => {
+      this.offlineBanner.classList.add('show');
+    }, 100);
+  }
+
+  hideOfflineBanner() {
+    if (this.offlineBanner) {
+      this.offlineBanner.classList.remove('show');
+      setTimeout(() => {
+        if (this.offlineBanner && this.offlineBanner.parentNode) {
+          this.offlineBanner.parentNode.removeChild(this.offlineBanner);
         }
+        this.offlineBanner = null;
+      }, 300);
+    }
+  }
+
+  showConnectionRestoredBanner() {
+    if (this.connectionBanner) return;
+    
+    this.connectionBanner = document.createElement('div');
+    this.connectionBanner.className = 'connection-restored-banner';
+    this.connectionBanner.innerHTML = `
+      <div class="connection-content">
+        <span class="connection-icon">✅</span>
+        <span class="connection-text">Соединение восстановлено</span>
+      </div>
+    `;
+    
+    document.body.appendChild(this.connectionBanner);
+    
+    // Анимация появления
+    setTimeout(() => {
+      this.connectionBanner.classList.add('show');
+    }, 100);
+    
+    // Автоматически скрываем через 3 секунды
+    setTimeout(() => {
+      this.hideConnectionRestoredBanner();
+    }, 3000);
+  }
+
+  hideConnectionRestoredBanner() {
+    if (this.connectionBanner) {
+      this.connectionBanner.classList.remove('show');
+      setTimeout(() => {
+        if (this.connectionBanner && this.connectionBanner.parentNode) {
+          this.connectionBanner.parentNode.removeChild(this.connectionBanner);
+        }
+        this.connectionBanner = null;
+      }, 300);
+    }
+  }
+
+  pauseGameIfRunning() {
+    // Проверяем, идет ли игра
+    const gameCanvas = document.getElementById('game-canvas');
+    if (gameCanvas && !gameCanvas.classList.contains('hidden')) {
+      // Если игра активна, ставим на паузу
+      if (window.gameInstance && window.gameInstance.isRunning()) {
+        window.gameInstance.pause();
+        this.gamePaused = true;
+        console.log('🎮 Game paused due to connection loss');
       }
     }
   }
 
-  // Публичные методы
-  getStatus() {
+  resumeGameIfPaused() {
+    if (this.gamePaused && window.gameInstance) {
+      window.gameInstance.resume();
+      this.gamePaused = false;
+      console.log('🎮 Game resumed after connection restored');
+    }
+  }
+
+  async syncDataOnOffline() {
+    // Сохраняем текущий счет
+    if (window.gameInstance && window.gameInstance.getScore) {
+      this.lastScore = window.gameInstance.getScore();
+    }
+    
+    // Пытаемся сохранить данные локально
+    try {
+      const gameData = {
+        score: this.lastScore,
+        timestamp: Date.now(),
+        offline: true
+      };
+      localStorage.setItem('dinoRunner_offline_data', JSON.stringify(gameData));
+    } catch (error) {
+      console.warn('Failed to save offline data:', error);
+    }
+  }
+
+  async syncDataOnRestore() {
+    try {
+      // Синхронизируем данные с сервером
+      if (this.apiService) { 
+        await this.apiService.getUserStats(); 
+      }
+      
+      // Восстанавливаем игру если она была на паузе
+      this.resumeGameIfPaused();
+      
+      // Очищаем локальные данные
+      localStorage.removeItem('dinoRunner_offline_data');
+      
+    } catch (error) {
+      console.error('Failed to sync data on restore:', error);
+    }
+  }
+
+  isBackendConnected() {
+    return this.isOnline;
+  }
+
+  getConnectionStatus() {
     return {
       isOnline: this.isOnline,
       lastCheck: this.lastCheck,
-      retryAttempts: this.retryAttempts
+      gamePaused: this.gamePaused
     };
   }
-
-  forceCheck() {
-    this.checkConnection();
-  }
-
-  isBackendOnline() {
-    return this.isOnline;
-  }
 }
-
-// Экспортируем для использования
-window.ConnectionMonitor = ConnectionMonitor;

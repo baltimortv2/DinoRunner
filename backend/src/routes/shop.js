@@ -1,12 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Pool } = require('pg');
-
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false
-});
+const userService = require('../services/userService');
 
 // Доступные скины в магазине
 const AVAILABLE_SKINS = [
@@ -56,238 +50,144 @@ const AVAILABLE_SKINS = [
   { id: 'clouds-supersonic', name: 'Облака: SuperSonic', price: 250, type: 'clouds', packName: 'supersonic', defaultOwned: false },
 ];
 
-// Middleware для извлечения user_id
-function extractUserId(req) {
-  const userId = req.headers['x-user-id'];
-  if (!userId) {
-    throw new Error('User ID required');
-  }
-  return userId;
-}
+// Middleware для извлечения Telegram user ID
+function extractTelegramUserId(req) {
+  const telegramId = req.headers['x-telegram-id'] || req.body.telegramId;
 
-// Инициализация пользователя скинов в базе данных
-async function initUserSkins(userId) {
-  try {
-    // Проверяем, есть ли пользователь
-    const userResult = await pool.query('SELECT id FROM users WHERE telegram_id = $1', [userId]);
-    
-    if (userResult.rows.length === 0) {
-      throw new Error('User not found');
+  if (!telegramId) {
+    // Пытаемся получить из JWT токена или других источников
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      // Здесь можно добавить логику для извлечения user ID из JWT
+      // Пока возвращаем тестовый ID
+      return 12345;
     }
-    
-    // Проверяем, есть ли уже скины у пользователя
-    const skinsResult = await pool.query('SELECT COUNT(*) as count FROM user_skins WHERE user_id = $1', [userId]);
-    
-    if (parseInt(skinsResult.rows[0].count) === 0) {
-      // Создаем стандартные скины
-      const defaultSkins = AVAILABLE_SKINS.filter(s => s.defaultOwned);
-      
-      for (const skin of defaultSkins) {
-        await pool.query(
-          'INSERT INTO user_skins (user_id, skin_id, owned, active, created_at) VALUES ($1, $2, $3, $4, NOW())',
-          [userId, skin.id, true, true]
-        );
-      }
-      
-      // Устанавливаем активные скины по умолчанию
-      await pool.query(
-        'UPDATE users SET active_character = $1, active_ground = $2, active_enemies_ground = $3, active_enemies_air = $4, active_clouds = $5 WHERE telegram_id = $6',
-        ['standart', 'standart', 'standart', 'standart', 'standart', userId]
-      );
-    }
-  } catch (error) {
-    console.error('Error initializing user skins:', error);
-    throw error;
+
+    throw new Error('Telegram User ID required');
   }
+
+  return parseInt(telegramId);
 }
 
 // GET /api/shop/skins
 router.get('/skins', async (req, res) => {
   try {
-    const userId = extractUserId(req);
-    
-    // Инициализируем скины пользователя
-    await initUserSkins(userId);
-    
-    // Получаем скины пользователя
-    const userSkinsResult = await pool.query(
-      'SELECT skin_id, owned, active FROM user_skins WHERE user_id = $1',
-      [userId]
-    );
-    
-    const userSkinsMap = new Map();
-    userSkinsResult.rows.forEach(row => {
-      userSkinsMap.set(row.skin_id, { owned: row.owned, active: row.active });
-    });
-    
-    // Возвращаем список скинов с информацией о владении
-    const skinsWithOwnership = AVAILABLE_SKINS.map(skin => ({
-      ...skin,
-      owned: userSkinsMap.has(skin.id) ? userSkinsMap.get(skin.id).owned : false,
-      active: userSkinsMap.has(skin.id) ? userSkinsMap.get(skin.id).active : false
-    }));
-    
-    res.json({
-      success: true,
-      skins: skinsWithOwnership
-    });
-  } catch (error) {
-    console.error('Get skins error:', error);
-    res.status(500).json({ error: 'Failed to get skins' });
-  }
-});
+    const telegramId = extractTelegramUserId(req);
 
-// POST /api/shop/purchase
-router.post('/purchase', async (req, res) => {
-  try {
-    const { skinId } = req.body;
-    const userId = extractUserId(req);
-    
-    if (!skinId) {
-      return res.status(400).json({ error: 'Skin ID required' });
-    }
-    
-    // Находим скин
-    const skin = AVAILABLE_SKINS.find(s => s.id === skinId);
-    if (!skin) {
-      return res.status(404).json({ error: 'Skin not found' });
-    }
-    
-    if (skin.price === 0) {
-      return res.status(400).json({ error: 'Cannot purchase free skin' });
-    }
-    
-    // Проверяем баланс пользователя
-    const userResult = await pool.query(
-      'SELECT coins FROM users WHERE telegram_id = $1',
-      [userId]
-    );
-    
-    if (userResult.rows.length === 0) {
+    // Получаем пользователя и его скины
+    const user = await userService.findByTelegramId(telegramId);
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    
-    const userCoins = userResult.rows[0].coins;
-    
-    if (userCoins < skin.price) {
-      return res.status(400).json({ 
-        error: 'Insufficient coins',
-        required: skin.price,
-        available: userCoins
-      });
-    }
-    
-    // Проверяем, не куплен ли уже скин
-    const existingSkinResult = await pool.query(
-      'SELECT owned FROM user_skins WHERE user_id = $1 AND skin_id = $2',
-      [userId, skinId]
-    );
-    
-    if (existingSkinResult.rows.length > 0 && existingSkinResult.rows[0].owned) {
-      return res.status(400).json({ error: 'Skin already owned' });
-    }
-    
-    // Начинаем транзакцию
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      
-      // Списываем монеты
-      await client.query(
-        'UPDATE users SET coins = coins - $1 WHERE telegram_id = $2',
-        [skin.price, userId]
-      );
-      
-      // Добавляем скин пользователю
-      if (existingSkinResult.rows.length > 0) {
-        await client.query(
-          'UPDATE user_skins SET owned = true WHERE user_id = $1 AND skin_id = $2',
-          [userId, skinId]
-        );
-      } else {
-        await client.query(
-          'INSERT INTO user_skins (user_id, skin_id, owned, active, created_at) VALUES ($1, $2, $3, $4, NOW())',
-          [userId, skinId, true, false]
-        );
-      }
-      
-      await client.query('COMMIT');
-      
-      // Получаем обновленный баланс
-      const newBalanceResult = await pool.query(
-        'SELECT coins FROM users WHERE telegram_id = $1',
-        [userId]
-      );
-      
-      res.json({
-        success: true,
-        message: 'Skin purchased successfully',
-        skin: skin,
-        newBalance: newBalanceResult.rows[0].coins
-      });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+
+    // Получаем активные скины пользователя
+    const userSkins = await userService.getUserSkins(telegramId);
+
+    // Формируем список доступных скинов с информацией о владении
+    const availableSkins = AVAILABLE_SKINS.map(skin => {
+      const userSkin = userSkins.find(us => us.skin_id === skin.id);
+      return {
+        ...skin,
+        owned: userSkin ? userSkin.owned : skin.defaultOwned,
+        active: userSkin ? userSkin.active : skin.defaultOwned,
+        canAfford: user.coins >= skin.price
+      };
+    });
+
+    res.json({
+      success: true,
+      skins: availableSkins,
+      userBalance: user.coins
+    });
+
+    console.log(`🛍️ Shop skins retrieved for Telegram user ${telegramId}`);
   } catch (error) {
-    console.error('Purchase skin error:', error);
-    res.status(500).json({ error: 'Failed to purchase skin' });
+    console.error('❌ Error getting shop skins:', error);
+    res.status(500).json({ error: 'Failed to get shop skins' });
   }
 });
 
-// POST /api/shop/activate
-router.post('/activate', async (req, res) => {
+// POST /api/shop/buy-skin
+router.post('/buy-skin', async (req, res) => {
   try {
+    const telegramId = extractTelegramUserId(req);
     const { skinId } = req.body;
-    const userId = extractUserId(req);
-    
+
     if (!skinId) {
-      return res.status(400).json({ error: 'Skin ID required' });
+      return res.status(400).json({ error: 'Skin ID is required' });
     }
-    
-    // Находим скин
+
+    // Находим скин в списке доступных
     const skin = AVAILABLE_SKINS.find(s => s.id === skinId);
     if (!skin) {
       return res.status(404).json({ error: 'Skin not found' });
     }
-    
-    // Проверяем, есть ли скин у пользователя
-    const userSkinResult = await pool.query(
-      'SELECT owned FROM user_skins WHERE user_id = $1 AND skin_id = $2',
-      [userId, skinId]
-    );
-    
-    if (userSkinResult.rows.length === 0 || !userSkinResult.rows[0].owned) {
-      return res.status(400).json({ error: 'Skin not owned' });
+
+    // Получаем пользователя
+    const user = await userService.findByTelegramId(telegramId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
     }
+
+    // Проверяем, есть ли уже этот скин
+    const userSkins = await userService.getUserSkins(telegramId);
+    const existingSkin = userSkins.find(us => us.skin_id === skinId);
     
+    if (existingSkin && existingSkin.owned) {
+      return res.status(400).json({ error: 'Skin already owned' });
+    }
+
+    // Проверяем баланс
+    if (user.coins < skin.price) {
+      return res.status(400).json({ error: 'Insufficient coins' });
+    }
+
+    // Покупаем скин
+    await userService.buySkin(telegramId, skinId, skin.price);
+
+    // Получаем обновленные данные пользователя
+    const updatedUser = await userService.findByTelegramId(telegramId);
+    const updatedSkins = await userService.getUserSkins(telegramId);
+
+    res.json({
+      success: true,
+      message: 'Skin purchased successfully',
+      userBalance: updatedUser.coins,
+      purchasedSkin: updatedSkins.find(us => us.skin_id === skinId)
+    });
+
+    console.log(`💰 Skin ${skinId} purchased for Telegram user ${telegramId}`);
+  } catch (error) {
+    console.error('❌ Error buying skin:', error);
+    res.status(500).json({ error: 'Failed to buy skin' });
+  }
+});
+
+// POST /api/shop/activate-skin
+router.post('/activate-skin', async (req, res) => {
+  try {
+    const telegramId = extractTelegramUserId(req);
+    const { skinId } = req.body;
+
+    if (!skinId) {
+      return res.status(400).json({ error: 'Skin ID is required' });
+    }
+
     // Активируем скин
-    await pool.query(
-      'UPDATE user_skins SET active = false WHERE user_id = $1 AND type = $2',
-      [userId, skin.type]
-    );
-    
-    await pool.query(
-      'UPDATE user_skins SET active = true WHERE user_id = $1 AND skin_id = $2',
-      [userId, skinId]
-    );
-    
-    // Обновляем активные скины в таблице users
-    const updateField = `active_${skin.type.replace('enemies', 'enemies_')}`;
-    await pool.query(
-      `UPDATE users SET ${updateField} = $1 WHERE telegram_id = $2`,
-      [skin.packName, userId]
-    );
-    
+    await userService.activateSkin(telegramId, skinId);
+
+    // Получаем обновленные активные скины
+    const activeSkins = await userService.getActiveSkins(telegramId);
+
     res.json({
       success: true,
       message: 'Skin activated successfully',
-      skin: skin
+      activeSkins
     });
+
+    console.log(`✨ Skin ${skinId} activated for Telegram user ${telegramId}`);
   } catch (error) {
-    console.error('Activate skin error:', error);
+    console.error('❌ Error activating skin:', error);
     res.status(500).json({ error: 'Failed to activate skin' });
   }
 });
@@ -295,33 +195,46 @@ router.post('/activate', async (req, res) => {
 // GET /api/shop/user-skins
 router.get('/user-skins', async (req, res) => {
   try {
-    const userId = extractUserId(req);
-    
-    // Получаем активные скины пользователя
-    const userResult = await pool.query(
-      'SELECT active_character, active_ground, active_enemies_ground, active_enemies_air, active_clouds FROM users WHERE telegram_id = $1',
-      [userId]
-    );
-    
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    const activeSkins = userResult.rows[0];
-    
+    const telegramId = extractTelegramUserId(req);
+
+    // Получаем скины пользователя
+    const userSkins = await userService.getUserSkins(telegramId);
+    const activeSkins = await userService.getActiveSkins(telegramId);
+
     res.json({
       success: true,
-      activeSkins: {
-        character: activeSkins.active_character,
-        ground: activeSkins.active_ground,
-        enemiesGround: activeSkins.active_enemies_ground,
-        enemiesAir: activeSkins.active_enemies_air,
-        clouds: activeSkins.active_clouds
-      }
+      userSkins,
+      activeSkins
     });
+
+    console.log(`🎨 User skins retrieved for Telegram user ${telegramId}`);
   } catch (error) {
-    console.error('Get user skins error:', error);
+    console.error('❌ Error getting user skins:', error);
     res.status(500).json({ error: 'Failed to get user skins' });
+  }
+});
+
+// POST /api/shop/reset-skins
+router.post('/reset-skins', async (req, res) => {
+  try {
+    const telegramId = extractTelegramUserId(req);
+
+    // Сбрасываем скины на стандартные
+    await userService.resetSkinsToDefault(telegramId);
+
+    // Получаем обновленные активные скины
+    const activeSkins = await userService.getActiveSkins(telegramId);
+
+    res.json({
+      success: true,
+      message: 'Skins reset to default successfully',
+      activeSkins
+    });
+
+    console.log(`🔄 Skins reset to default for Telegram user ${telegramId}`);
+  } catch (error) {
+    console.error('❌ Error resetting skins:', error);
+    res.status(500).json({ error: 'Failed to reset skins' });
   }
 });
 

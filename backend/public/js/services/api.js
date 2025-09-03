@@ -37,6 +37,79 @@ class ApiService {
     };
   }
 
+  async healthCheck(signal) {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/health`, {
+        method: 'GET',
+        cache: 'no-cache',
+        signal,
+      });
+      return response.ok;
+    } catch (error) {
+      console.warn('Health check request failed:', error.name);
+      return false;
+    }
+  }
+
+  async authenticateTelegram(authData) {
+    return this.makeRequest('/api/auth/telegram/validate', {
+      method: 'POST',
+      body: authData,
+    });
+  }
+
+  async getUserProfile(token) {
+    return this.makeRequest('/api/user/profile', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  }
+
+  async updateUserProfile(token, profileData) {
+    return this.makeRequest('/api/user/profile', {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: profileData,
+    });
+  }
+
+  /**
+   * Создание запроса на вывод монет
+   */
+  async createWithdrawal(amount, tonAddress) {
+    return this.makeRequest('/api/withdrawals/request', {
+      method: 'POST',
+      body: { amount, tonAddress }
+    });
+  }
+
+  /**
+   * Получение истории выводов пользователя
+   */
+  async getWithdrawalHistory() {
+    return this.makeRequest('/api/withdrawals/history');
+  }
+
+  /**
+   * Получение статистики выводов (для админов)
+   */
+  async getWithdrawalStats() {
+    return this.makeRequest('/api/withdrawals/stats');
+  }
+
+  /**
+   * Обработка вывода (для админов)
+   */
+  async processWithdrawal(withdrawalId, action, txHash = null) {
+    return this.makeRequest('/api/withdrawals/process', {
+      method: 'POST',
+      body: { withdrawalId, action, txHash }
+    });
+  }
+
   // Event system
   on(event, callback) {
     if (!this.listeners[event]) {
@@ -376,12 +449,15 @@ class ApiService {
       method: options.method || 'GET',
       headers: {
         'Content-Type': 'application/json',
-        // Для разработки - добавляем тестовые заголовки
-        'Authorization': `Bearer dev-token-${Date.now()}`,
-        'X-User-ID': '12345',
         ...options.headers
       }
     };
+
+    // Добавляем токен аутентификации, если он есть
+    if (this.token) {
+      config.headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
     if (options.body) config.body = JSON.stringify(options.body);
 
     try {
@@ -406,9 +482,52 @@ class ApiService {
     localStorage.removeItem('user_id');
   }
 
+  /**
+   * Установка токена аутентификации
+   */
+  setToken(token) {
+    this.token = token;
+    localStorage.setItem('auth_token', token);
+  }
+
+  /**
+   * Установка ID пользователя
+   */
+  setUserId(userId) {
+    this.userId = userId;
+    localStorage.setItem('user_id', userId);
+  }
+
+  /**
+   * Загрузка токена из localStorage
+   */
+  loadStoredAuth() {
+    const token = localStorage.getItem('auth_token');
+    const userId = localStorage.getItem('user_id');
+    
+    if (token) this.token = token;
+    if (userId) this.userId = userId;
+    
+    return { token, userId };
+  }
+
   isAuthenticated() {
-    // Для разработки - всегда считаем аутентифицированным
-    return true;
+    // Проверяем наличие токена
+    return !!this.token;
+  }
+
+  /**
+   * Получение токена аутентификации
+   */
+  getToken() {
+    return this.token;
+  }
+
+  /**
+   * Получение ID пользователя
+   */
+  getUserId() {
+    return this.userId;
   }
 
   // Методы для работы с ConnectionMonitor
@@ -423,6 +542,108 @@ class ApiService {
         console.log('🔴 API Service: Backend connection lost');
         this.isOnline = false;
       });
+    }
+  }
+
+  /**
+   * Подключение к WebSocket
+   */
+  connectWebSocket() {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      console.log('WebSocket already connected');
+      return;
+    }
+
+    try {
+      this.ws = new WebSocket(this.wsUrl);
+      
+      this.ws.onopen = () => {
+        console.log('🟢 WebSocket connected');
+        this.isConnected = true;
+        this.reconnectAttempts = 0;
+        this.emit('connection:connected');
+      };
+
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.handleWebSocketMessage(data);
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error);
+        }
+      };
+
+      this.ws.onclose = () => {
+        console.log('🔴 WebSocket disconnected');
+        this.isConnected = false;
+        this.emit('connection:disconnected');
+        this.attemptReconnect();
+      };
+
+      this.ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        this.emit('connection:error', error);
+      };
+    } catch (error) {
+      console.error('Failed to create WebSocket:', error);
+    }
+  }
+
+  /**
+   * Отключение от WebSocket
+   */
+  disconnectWebSocket() {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.isConnected = false;
+  }
+
+  /**
+   * Попытка переподключения к WebSocket
+   */
+  attemptReconnect() {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log('Max reconnection attempts reached');
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+    
+    console.log(`Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    
+    setTimeout(() => {
+      this.connectWebSocket();
+    }, delay);
+  }
+
+  /**
+   * Обработка сообщений WebSocket
+   */
+  handleWebSocketMessage(data) {
+    switch (data.type) {
+      case 'auth:success':
+        this.emit('auth:success', data);
+        break;
+      case 'game:session-started':
+        this.emit('game:session-started', data);
+        break;
+      case 'game:session-ended':
+        this.emit('game:session-ended', data);
+        break;
+      case 'game:heartbeat-ack':
+        this.emit('game:heartbeat-ack', data);
+        break;
+      case 'game:era-changed':
+        this.emit('game:era-changed', data);
+        break;
+      case 'economy:updated':
+        this.emit('economy:updated', data);
+        break;
+      default:
+        console.log('Unknown WebSocket message type:', data.type);
     }
   }
 
@@ -445,6 +666,33 @@ class ApiService {
     });
   }
 
+  /**
+   * Отправка сообщения через WebSocket
+   */
+  sendWebSocketMessage(type, data = {}) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      const message = { type, ...data };
+      this.ws.send(JSON.stringify(message));
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Получение статуса WebSocket соединения
+   */
+  getWebSocketStatus() {
+    if (!this.ws) return 'disconnected';
+    
+    switch (this.ws.readyState) {
+      case WebSocket.CONNECTING: return 'connecting';
+      case WebSocket.OPEN: return 'open';
+      case WebSocket.CLOSING: return 'closing';
+      case WebSocket.CLOSED: return 'closed';
+      default: return 'unknown';
+    }
+  }
+
   // Проверка статуса backend соединения
   isBackendOnline() {
     // Проверяем через ConnectionMonitor, если он доступен
@@ -454,20 +702,55 @@ class ApiService {
     // Fallback к внутреннему статусу
     return this.isOnline;
   }
+
+  /**
+   * Проверка соединения с backend
+   */
+  async checkConnection() {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/health`, {
+        method: 'GET',
+        cache: 'no-cache',
+        signal: AbortSignal.timeout(5000)
+      });
+      return response.ok;
+    } catch (error) {
+      console.warn('Backend connection check failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Проверка токена аутентификации
+   */
+  async verifyToken() {
+    if (!this.token) return false;
+    
+    try {
+      const response = await this.makeRequest('/api/auth/verify');
+      return response.success;
+    } catch (error) {
+      console.warn('Token verification failed:', error);
+      return false;
+    }
+  }
 }
 
-// Create global instance
-window.apiService = new ApiService();
+// Create and export a single instance
+export const apiService = new ApiService();
 
-// Auto-connect WebSocket when service is created
-(async () => {
-  const ok = await window.apiService.verifyToken();
-  if (ok) {
-    window.apiService.connectWebSocket();
-  }
-  
-  // Настраиваем слушатели соединения после инициализации
-  if (window.connectionMonitor) {
-    window.apiService.setupConnectionListeners();
-  }
-})();
+  // Auto-connect WebSocket when service is created
+  (async () => {
+    // Загружаем сохраненную аутентификацию
+    apiService.loadStoredAuth();
+    
+    const ok = await apiService.verifyToken();
+    if (ok) {
+      apiService.connectWebSocket();
+    }
+    
+    // Настраиваем слушатели соединения после инициализации
+    if (window.connectionMonitor) {
+      apiService.setupConnectionListeners();
+    }
+  })();
